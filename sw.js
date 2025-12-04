@@ -1,9 +1,9 @@
-const CACHE_NAME = "piscina-limpa-v24"; 
+const CACHE_NAME = "piscina-limpa-v25"; 
 
 const APP_SHELL_FILES = [
   './',
   'index.html',
-  'index.js',
+  'index.tsx',
   'manifest.json',
   'icons/icon-72.png',
   'icons/icon-96.png',

@@ -30,7 +30,6 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     });
     const [options, setOptions] = useState({
         hasWellWater: false,
-        includeProducts: false,
     });
     const [selectedPlanIdentifier, setSelectedPlanIdentifier] = useState('simples'); // 'simples' or fidelity plan ID
 
@@ -76,7 +75,9 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         let basePrice = pricing.volumeTiers.find(tier => volume <= tier.upTo)?.price || pricing.volumeTiers[pricing.volumeTiers.length - 1].price;
         
         if (options.hasWellWater) basePrice += pricing.wellWaterFee;
-        if (options.includeProducts) basePrice += pricing.productsFee;
+        
+        // Product inclusion is now managed by the admin, so it's not part of the initial calculation
+        // if (options.includeProducts) basePrice += pricing.productsFee;
 
         if (selectedPlanType === 'VIP' && selectedFidelityPlan && settings.features.vipPlanEnabled) {
             basePrice = basePrice * (1 - selectedFidelityPlan.discountPercent / 100);
@@ -144,7 +145,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                 },
                 poolVolume: volume,
                 hasWellWater: options.hasWellWater,
-                includeProducts: options.includeProducts,
+                includeProducts: false, // This is now managed by the admin, defaults to false
                 plan: selectedPlanType,
                 fidelityPlan: selectedFidelityPlan,
                 monthlyFee: monthlyFee,
@@ -153,7 +154,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             setShowSuccessPage(true);
             
             setFormData({ name: '', email: '', phone: '', street: '', number: '', neighborhood: '', city: '', state: '', zip: '', width: '', length: '', depth: '' });
-            setOptions({ hasWellWater: false, includeProducts: false });
+            setOptions({ hasWellWater: false });
         } catch (error: any) {
             showNotification(error.message || "Falha ao enviar orçamento.", 'error');
         } finally {
@@ -192,9 +193,23 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
 
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">2. Opções Adicionais</legend>
-                    <div className="space-y-2 mt-2">
-                        <label className="flex items-center gap-3"><input type="checkbox" name="hasWellWater" checked={options.hasWellWater} onChange={handleCheckboxChange} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"/>Água de poço</label>
-                        <label className="flex items-center gap-3"><input type="checkbox" name="includeProducts" checked={options.includeProducts} onChange={handleCheckboxChange} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"/>Incluir produtos</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2 items-center">
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    name="hasWellWater" 
+                                    checked={options.hasWellWater} 
+                                    onChange={handleCheckboxChange} 
+                                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                />
+                                Água de poço
+                            </label>
+                        </div>
+                        <div className="bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-3 rounded-r-lg">
+                            <p className="font-bold text-sm">Atenção:</p>
+                            <p className="text-sm">Não trabalhamos com piscinas das marcas e modelos IGUI/SPLASH.</p>
+                        </div>
                     </div>
                 </fieldset>
                 
