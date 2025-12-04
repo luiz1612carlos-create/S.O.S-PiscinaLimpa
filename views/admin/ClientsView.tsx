@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { calculateClientMonthlyFee, calculateVolume, normalizeDimension } from '../../utils/calculations';
-import { AppContextType, Client, ClientProduct, PlanType, ClientStatus, PoolUsageStatus, PaymentStatus, Product, Address, Settings, Bank } from '../../types';
+import { AppContextType, Client, ClientProduct, PlanType, ClientStatus, PoolUsageStatus, PaymentStatus, Product, Address, Settings, Bank, FidelityPlan } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
@@ -127,7 +127,9 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                         <Card key={client.id} className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300" onClick={() => handleOpenModal(client)}>
                             <CardHeader>
                                 <h3 className="text-lg font-semibold truncate">{client.name}</h3>
-                                <p className={`text-sm font-bold ${client.plan === 'VIP' ? 'text-yellow-500' : 'text-blue-500'}`}>{client.plan}</p>
+                                <p className={`text-sm font-bold ${client.plan === 'VIP' ? 'text-yellow-500' : 'text-blue-500'}`}>
+                                    {client.plan} {client.fidelityPlan ? `(${client.fidelityPlan.months} meses)` : ''}
+                                </p>
                             </CardHeader>
                             <CardContent>
                                 <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{formatAddress(client.address)}</p>
@@ -275,6 +277,18 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
         });
     };
     
+    const handlePlanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = e.target.value;
+        if (value === 'Simples') {
+            setClientData(prev => ({ ...prev, plan: 'Simples', fidelityPlan: undefined }));
+        } else {
+            const selectedFidelityPlan = settings?.fidelityPlans.find(fp => fp.id === value);
+            if (selectedFidelityPlan) {
+                setClientData(prev => ({ ...prev, plan: 'VIP', fidelityPlan: selectedFidelityPlan }));
+            }
+        }
+    };
+    
     const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
         setClientData(prev => ({
@@ -302,6 +316,17 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
         const tempClientForCalc = { ...clientData, poolVolume: volume };
         return calculateClientMonthlyFee(tempClientForCalc, settings);
     }, [clientData, volume, settings]);
+
+    const planOptions = useMemo(() => {
+        if (!settings) return [];
+        return [
+            { value: 'Simples', label: 'Plano Simples' },
+            ...settings.fidelityPlans.map(fp => ({
+                value: fp.id,
+                label: `VIP - Fidelidade ${fp.months} Meses (${fp.discountPercent}%)`
+            }))
+        ];
+    }, [settings]);
     
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Editar Cliente: ${client.name}`} size="xl">
@@ -314,7 +339,12 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                          <Input label="Email" name="email" type="email" value={clientData.email} onChange={handleChange} />
                          <Input label="Telefone" name="phone" value={clientData.phone} onChange={handleChange} />
                          <div />
-                         <Select label="Plano" name="plan" value={clientData.plan} onChange={handleChange} options={[{value: 'Simples', label: 'Simples'}, {value: 'VIP', label: 'VIP'}]} />
+                         <Select 
+                            label="Plano" 
+                            value={clientData.plan === 'VIP' ? clientData.fidelityPlan?.id : 'Simples'} 
+                            onChange={handlePlanChange} 
+                            options={planOptions} 
+                         />
                          <Select label="Status do Cliente" name="clientStatus" value={clientData.clientStatus} onChange={handleChange} options={[{value: 'Ativo', label: 'Ativo'}, {value: 'Pendente', label: 'Pendente'}]} />
                     </div>
                 </fieldset>

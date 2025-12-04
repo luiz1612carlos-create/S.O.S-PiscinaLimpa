@@ -80,7 +80,12 @@ const NewClientBudgetCard = ({ budget, processingId, onApprove, onReject }: { bu
                 <p><strong>Produtos Inclusos:</strong> {budget.includeProducts ? 'Sim' : 'Não'}</p>
             </div>
             
-            <p><strong>Plano:</strong> <span className={`font-bold ${budget.plan === 'VIP' ? 'text-yellow-500' : 'text-blue-500'}`}>{budget.plan}</span></p>
+            <p><strong>Plano:</strong> 
+                <span className={`font-bold ${budget.plan === 'VIP' ? 'text-yellow-500' : 'text-blue-500'}`}>
+                    {budget.plan}
+                    {budget.fidelityPlan && ` - Fidelidade ${budget.fidelityPlan.months} Meses`}
+                </span>
+            </p>
             <p className="text-2xl font-bold text-primary-600 dark:text-primary-400 text-center">
                 R$ {budget.monthlyFee.toFixed(2).replace('.', ',')} / mês
             </p>

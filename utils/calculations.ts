@@ -1,4 +1,4 @@
-import { Client, Settings } from './types';
+import { Client, Settings, FidelityPlan } from './types';
 
 export const normalizeDimension = (value: string | number): number => {
     if (value === null || value === undefined) return 0;
@@ -30,8 +30,8 @@ export const calculateClientMonthlyFee = (client: Partial<Client>, settings: Set
     if (client.hasWellWater) basePrice += pricing.wellWaterFee;
     if (client.includeProducts) basePrice += pricing.productsFee;
 
-    if (client.plan === 'VIP' && settings.features.vipPlanEnabled) {
-        basePrice = basePrice * (1 - pricing.vipDiscountPercent / 100);
+    if (client.plan === 'VIP' && client.fidelityPlan && settings.features.vipPlanEnabled) {
+        basePrice = basePrice * (1 - client.fidelityPlan.discountPercent / 100);
     }
 
     return basePrice;

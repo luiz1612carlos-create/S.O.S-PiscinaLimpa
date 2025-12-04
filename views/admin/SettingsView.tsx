@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption } from '../../types';
+import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan } from '../../types';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
@@ -101,20 +101,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
     };
     
-    const handleBenefitChange = (plan: 'simple' | 'vip', index: number, value: string) => {
-        const newBenefits = [...localSettings.plans[plan].benefits];
-        newBenefits[index] = value;
-        setLocalSettings(prev => ({...prev!, plans: {...prev!.plans, [plan]: {...prev!.plans[plan], benefits: newBenefits}}}));
-    };
-    
-    const addBenefit = (plan: 'simple' | 'vip') => {
-        const newBenefits = [...localSettings.plans[plan].benefits, 'Novo benefício'];
-        setLocalSettings(prev => ({...prev!, plans: {...prev!.plans, [plan]: {...prev!.plans[plan], benefits: newBenefits}}}));
+    const handleFidelityPlanChange = (index: number, field: keyof Omit<FidelityPlan, 'id'>, value: number) => {
+        const newPlans = [...localSettings.fidelityPlans];
+        newPlans[index][field] = value;
+        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
     };
 
-    const removeBenefit = (plan: 'simple' | 'vip', index: number) => {
-        const newBenefits = localSettings.plans[plan].benefits.filter((_, i) => i !== index);
-        setLocalSettings(prev => ({...prev!, plans: {...prev!.plans, [plan]: {...prev!.plans[plan], benefits: newBenefits}}}));
+    const addFidelityPlan = () => {
+        const newPlan = { id: Date.now().toString(), months: 0, discountPercent: 0 };
+        const newPlans = [...localSettings.fidelityPlans, newPlan];
+        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    const removeFidelityPlan = (index: number) => {
+        const newPlans = localSettings.fidelityPlans.filter((_, i) => i !== index);
+        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
     };
 
     const handleAdvanceOptionChange = (index: number, field: keyof AdvancePaymentOption, value: number) => {
@@ -233,11 +234,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
                         <strong>Atenção:</strong> Alterar estes valores afetará o preço da mensalidade de <strong>todos</strong> os clientes existentes.
                     </p>
-                     <div className="grid md:grid-cols-4 gap-4 mb-4">
+                     <div className="grid md:grid-cols-3 gap-4 mb-4">
                          <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
                          <Input label="Taxa Água de Poço" name="wellWaterFee" type="number" value={localSettings.pricing.wellWaterFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
                          <Input label="Taxa de Produtos" name="productsFee" type="number" value={localSettings.pricing.productsFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                         <Input label="Desconto VIP (%)" name="vipDiscountPercent" type="number" value={localSettings.pricing.vipDiscountPercent} onChange={(e) => handleSimpleChange(e, 'pricing')} />
                     </div>
                     <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
                     {localSettings.pricing.volumeTiers.map((tier, index) => (
@@ -254,8 +254,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
 
                 {/* Plans */}
                 <div className="grid md:grid-cols-2 gap-8">
-                    <PlanEditor title="Plano Simples" planKey="simple" plan={localSettings.plans.simple} onBenefitChange={handleBenefitChange} addBenefit={addBenefit} removeBenefit={removeBenefit} setLocalSettings={setLocalSettings} />
-                    <PlanEditor title="Plano VIP" planKey="vip" plan={localSettings.plans.vip} onBenefitChange={handleBenefitChange} addBenefit={addBenefit} removeBenefit={removeBenefit} setLocalSettings={setLocalSettings}/>
+                    <PlanEditor title="Plano Simples" planKey="simple" plan={localSettings.plans.simple} setLocalSettings={setLocalSettings} />
+                    <FidelityPlanEditor localSettings={localSettings} setLocalSettings={setLocalSettings} />
                 </div>
 
                 {/* Features */}
@@ -440,24 +440,88 @@ const BankManager = ({ appContext }: { appContext: AppContextType }) => {
     );
 };
 
-const PlanEditor = ({ title, planKey, plan, onBenefitChange, addBenefit, removeBenefit, setLocalSettings }: any) => {
+const PlanEditor = ({ title, planKey, plan, setLocalSettings }: any) => {
     
-    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setLocalSettings((prev: Settings | null) => ({...prev!, plans: {...prev!.plans, [planKey]: {...prev!.plans[planKey], title: e.target.value}}}));
+    const handleChange = (field: string, value: string) => {
+        setLocalSettings((prev: Settings | null) => ({...prev!, plans: {...prev!.plans, [planKey]: {...prev!.plans[planKey], [field]: value}}}));
     };
+    
+    const handleBenefitChange = (index: number, value: string) => {
+        const newBenefits = [...plan.benefits];
+        newBenefits[index] = value;
+        setLocalSettings((prev: Settings | null) => ({...prev!, plans: {...prev!.plans, [planKey]: {...prev!.plans[planKey], benefits: newBenefits}}}));
+    };
+    
+    const addBenefit = () => {
+        const newBenefits = [...plan.benefits, 'Novo benefício'];
+        setLocalSettings((prev: Settings | null) => ({...prev!, plans: {...prev!.plans, [planKey]: {...prev!.plans[planKey], benefits: newBenefits}}}));
+    };
+
+    const removeBenefit = (index: number) => {
+        const newBenefits = plan.benefits.filter((_: any, i: number) => i !== index);
+        setLocalSettings((prev: Settings | null) => ({...prev!, plans: {...prev!.plans, [planKey]: {...prev!.plans[planKey], benefits: newBenefits}}}));
+    };
+
 
     return (
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
             <h3 className="text-xl font-semibold mb-4">{title}</h3>
-            <Input label="Título do Plano" value={plan.title} onChange={handleTitleChange} />
+            <Input label="Título do Plano" value={plan.title} onChange={(e) => handleChange('title', e.target.value)} />
             <h4 className="font-semibold mt-4 mb-2">Benefícios</h4>
             {plan.benefits.map((benefit: string, index: number) => (
                 <div key={index} className="flex items-center gap-2 mb-2">
-                    <Input label="" value={benefit} onChange={(e) => onBenefitChange(planKey, index, e.target.value)} containerClassName="flex-grow mb-0" />
-                    <Button variant="danger" size="sm" onClick={() => removeBenefit(planKey, index)}><TrashIcon className="w-4 h-4"/></Button>
+                    <Input label="" value={benefit} onChange={(e) => handleBenefitChange(index, e.target.value)} containerClassName="flex-grow mb-0" />
+                    <Button variant="danger" size="sm" onClick={() => removeBenefit(index)}><TrashIcon className="w-4 h-4"/></Button>
                 </div>
             ))}
-            <Button variant="secondary" size="sm" onClick={() => addBenefit(planKey)}>Adicionar Benefício</Button>
+            <Button variant="secondary" size="sm" onClick={addBenefit}>Adicionar Benefício</Button>
+            
+            <h4 className="font-semibold mt-6 mb-2">Termos do Plano</h4>
+            <textarea
+                value={plan.terms}
+                onChange={(e) => handleChange('terms', e.target.value)}
+                rows={5}
+                className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+        </div>
+    );
+};
+
+const FidelityPlanEditor = ({ localSettings, setLocalSettings }: any) => {
+    const handleFidelityPlanChange = (index: number, field: keyof Omit<FidelityPlan, 'id'>, value: number) => {
+        const newPlans = [...localSettings.fidelityPlans];
+        newPlans[index][field] = value;
+        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    const addFidelityPlan = () => {
+        const newPlan = { id: Date.now().toString(), months: 0, discountPercent: 0 };
+        const newPlans = [...localSettings.fidelityPlans, newPlan];
+        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    const removeFidelityPlan = (index: number) => {
+        const newPlans = localSettings.fidelityPlans.filter((_: any, i: number) => i !== index);
+        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    return (
+        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+            <h3 className="text-xl font-semibold mb-4">Planos de Fidelidade (VIP)</h3>
+            <div className="space-y-2">
+                {localSettings.fidelityPlans.map((plan: FidelityPlan, index: number) => (
+                    <div key={plan.id} className="flex items-center gap-2">
+                        <span>Fidelidade de</span>
+                        <Input label="" type="number" value={plan.months} onChange={(e) => handleFidelityPlanChange(index, 'months', +e.target.value)} containerClassName="mb-0 w-20" />
+                        <span>meses com</span>
+                        <Input label="" type="number" value={plan.discountPercent} onChange={(e) => handleFidelityPlanChange(index, 'discountPercent', +e.target.value)} containerClassName="mb-0 w-20" />
+                        <span>% de desconto</span>
+                        <Button variant="danger" size="sm" onClick={() => removeFidelityPlan(index)}><TrashIcon className="w-4 h-4"/></Button>
+                    </div>
+                ))}
+            </div>
+            <Button variant="secondary" size="sm" onClick={addFidelityPlan} className="mt-4">Adicionar Plano de Fidelidade</Button>
+             <PlanEditor title="Detalhes Gerais do Plano VIP" planKey="vip" plan={localSettings.plans.vip} setLocalSettings={setLocalSettings} />
         </div>
     );
 };

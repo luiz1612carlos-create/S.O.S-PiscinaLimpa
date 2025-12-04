@@ -54,6 +54,12 @@ export interface Transaction {
     date: any; // Firestore Timestamp
 }
 
+export interface FidelityPlan {
+    id: string;
+    months: number;
+    discountPercent: number;
+}
+
 export interface Client {
     id: string;
     uid?: string;
@@ -70,6 +76,7 @@ export interface Client {
     hasWellWater: boolean;
     includeProducts: boolean;
     plan: PlanType;
+    fidelityPlan?: FidelityPlan;
     clientStatus: ClientStatus;
     poolStatus: PoolStatus;
     payment: {
@@ -98,6 +105,7 @@ export interface BudgetQuote {
     hasWellWater: boolean;
     includeProducts: boolean;
     plan: PlanType;
+    fidelityPlan?: FidelityPlan;
     monthlyFee: number;
     status: BudgetQuoteStatus;
     createdAt: any; // Firestore Timestamp
@@ -175,7 +183,6 @@ export interface Settings {
         perKm: number;
         wellWaterFee: number;
         productsFee: number;
-        vipDiscountPercent: number;
         volumeTiers: {
             upTo: number;
             price: number;
@@ -185,12 +192,15 @@ export interface Settings {
         simple: {
             title: string;
             benefits: string[];
+            terms: string;
         };
         vip: {
             title: string;
             benefits: string[];
+            terms: string;
         };
     };
+    fidelityPlans: FidelityPlan[];
     features: {
         vipPlanEnabled: boolean;
         vipPlanDisabledMessage: string;

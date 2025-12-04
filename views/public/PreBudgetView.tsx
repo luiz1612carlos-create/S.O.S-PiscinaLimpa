@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
-import { AppContextType, PlanType, Settings } from '../../types';
+import { AppContextType, PlanType, Settings, FidelityPlan } from '../../types';
 import { Spinner } from '../../components/Spinner';
 import { normalizeDimension } from '../../utils/calculations';
 import BudgetSuccessView from './BudgetSuccessView';
+import { Modal } from '../../components/Modal';
 
 interface PreBudgetViewProps {
     appContext: AppContextType;
@@ -31,8 +32,20 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         hasWellWater: false,
         includeProducts: false,
     });
-    const [selectedPlan, setSelectedPlan] = useState<PlanType>('Simples');
+    const [selectedPlanIdentifier, setSelectedPlanIdentifier] = useState('simples'); // 'simples' or fidelity plan ID
+
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+    const [hasAgreedToTerms, setHasAgreedToTerms] = useState(false);
+
+    const selectedPlanType: PlanType = selectedPlanIdentifier === 'simples' ? 'Simples' : 'VIP';
+    const selectedFidelityPlan = useMemo(() => {
+        if (selectedPlanType === 'VIP' && settings) {
+            return settings.fidelityPlans.find(fp => fp.id === selectedPlanIdentifier);
+        }
+        return undefined;
+    }, [selectedPlanIdentifier, selectedPlanType, settings]);
+
 
     const isFormComplete = useMemo(() => {
         const requiredFields: (keyof typeof formData)[] = [
@@ -65,18 +78,19 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         if (options.hasWellWater) basePrice += pricing.wellWaterFee;
         if (options.includeProducts) basePrice += pricing.productsFee;
 
-        if (selectedPlan === 'VIP' && settings.features.vipPlanEnabled) {
-            basePrice = basePrice * (1 - pricing.vipDiscountPercent / 100);
+        if (selectedPlanType === 'VIP' && selectedFidelityPlan && settings.features.vipPlanEnabled) {
+            basePrice = basePrice * (1 - selectedFidelityPlan.discountPercent / 100);
         }
 
         return basePrice;
-    }, [volume, options, selectedPlan, settings]);
+    }, [volume, options, selectedPlanType, selectedFidelityPlan, settings]);
 
     useEffect(() => {
-        if (selectedPlan === 'VIP' && settings && !settings.features.vipPlanEnabled) {
-            setSelectedPlan('Simples');
+        // If VIP plans are disabled and a VIP plan is selected, revert to simple
+        if (settings && !settings.features.vipPlanEnabled && selectedPlanType === 'VIP') {
+            setSelectedPlanIdentifier('simples');
         }
-    }, [selectedPlan, settings]);
+    }, [settings?.features.vipPlanEnabled, selectedPlanType]);
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -95,7 +109,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         setOptions({ ...options, [e.target.name]: e.target.checked });
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if(!isFormComplete) {
             showNotification("Por favor, preencha todos os campos.", "error");
@@ -105,6 +119,10 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             showNotification("Por favor, preencha as dimensões da piscina corretamente.", "error");
             return;
         }
+        setIsTermsModalOpen(true);
+    };
+    
+    const handleFinalSubmit = async () => {
         setIsSubmitting(true);
         try {
             await createBudgetQuote({
@@ -127,11 +145,12 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                 poolVolume: volume,
                 hasWellWater: options.hasWellWater,
                 includeProducts: options.includeProducts,
-                plan: selectedPlan,
+                plan: selectedPlanType,
+                fidelityPlan: selectedFidelityPlan,
                 monthlyFee: monthlyFee,
             });
             
-            setShowSuccessPage(true); // Show success page instead of notification
+            setShowSuccessPage(true);
             
             setFormData({ name: '', email: '', phone: '', street: '', number: '', neighborhood: '', city: '', state: '', zip: '', width: '', length: '', depth: '' });
             setOptions({ hasWellWater: false, includeProducts: false });
@@ -139,6 +158,8 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             showNotification(error.message || "Falha ao enviar orçamento.", 'error');
         } finally {
             setIsSubmitting(false);
+            setIsTermsModalOpen(false);
+            setHasAgreedToTerms(false);
         }
     };
     
@@ -181,20 +202,36 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                     <h3 className="text-lg font-semibold text-center mb-4">3. Selecione um Plano</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <PlanCard 
-                            plan={settings.plans.simple} 
-                            planType="Simples" 
-                            selectedPlan={selectedPlan} 
-                            onSelect={setSelectedPlan} 
+                            title={settings.plans.simple.title}
+                            benefits={settings.plans.simple.benefits}
+                            isSelected={selectedPlanIdentifier === 'simples'} 
+                            onSelect={() => setSelectedPlanIdentifier('simples')} 
                         />
-                        <PlanCard 
-                            plan={settings.plans.vip} 
-                            planType="VIP" 
-                            selectedPlan={selectedPlan} 
-                            onSelect={setSelectedPlan}
-                            disabled={!settings.features.vipPlanEnabled}
-                            disabledMessage={settings.features.vipPlanDisabledMessage}
-                        />
+                        {!settings.features.vipPlanEnabled && (
+                             <div className="p-6 border-2 rounded-lg transition-all duration-300 relative bg-gray-200 dark:bg-gray-700 opacity-60 cursor-not-allowed">
+                                <div className="absolute inset-0 flex items-center justify-center bg-gray-500/50 rounded-lg">
+                                    <span className="px-3 py-1 bg-gray-800 text-white text-sm font-bold rounded-full">{settings.features.vipPlanDisabledMessage}</span>
+                                </div>
+                                <h4 className="text-xl font-bold text-center">{settings.plans.vip.title}</h4>
+                                <ul className="mt-4 space-y-2 list-disc list-inside text-gray-600 dark:text-gray-300">
+                                    {settings.plans.vip.benefits.map((benefit, i) => <li key={i}>{benefit}</li>)}
+                                </ul>
+                            </div>
+                        )}
                     </div>
+                    {settings.features.vipPlanEnabled && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                            {settings.fidelityPlans.map(plan => (
+                                <PlanCard
+                                    key={plan.id}
+                                    title={`${settings.plans.vip.title} ${plan.months} Meses`}
+                                    benefits={[`${plan.discountPercent}% de Desconto`, ...settings.plans.vip.benefits]}
+                                    isSelected={selectedPlanIdentifier === plan.id}
+                                    onSelect={() => setSelectedPlanIdentifier(plan.id)}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="text-center pt-6 border-t dark:border-gray-700">
@@ -251,25 +288,60 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                     Enviar Orçamento para Análise
                 </Button>
             </form>
+            
+            {isTermsModalOpen && settings && (
+                <Modal
+                    isOpen={isTermsModalOpen}
+                    onClose={() => setIsTermsModalOpen(false)}
+                    title={`Termos do Serviço - ${selectedPlanType === 'Simples' ? settings.plans.simple.title : settings.plans.vip.title}`}
+                    size="lg"
+                    footer={
+                        <div className="flex justify-between w-full items-center">
+                             <Button variant="secondary" onClick={() => setIsTermsModalOpen(false)}>Cancelar</Button>
+                             <Button
+                                onClick={handleFinalSubmit}
+                                isLoading={isSubmitting}
+                                disabled={!hasAgreedToTerms || isSubmitting}
+                            >
+                                Finalizar e Enviar
+                            </Button>
+                        </div>
+                    }
+                >
+                    <div className="space-y-4">
+                        <div className="prose dark:prose-invert max-h-64 overflow-y-auto p-2 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
+                            {/* Using whitespace-pre-wrap to respect line breaks from the textarea */}
+                            <p className="whitespace-pre-wrap text-sm">{selectedPlanType === 'Simples' ? settings.plans.simple.terms : settings.plans.vip.terms}</p>
+                        </div>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={hasAgreedToTerms}
+                                onChange={(e) => setHasAgreedToTerms(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            Li e aceito os termos de serviço.
+                        </label>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
 
 interface PlanCardProps {
-    plan: { title: string; benefits: string[] };
-    planType: PlanType;
-    selectedPlan: PlanType;
-    onSelect: (plan: PlanType) => void;
+    title: string;
+    benefits: string[];
+    isSelected: boolean;
+    onSelect: () => void;
     disabled?: boolean;
     disabledMessage?: string;
 }
 
-const PlanCard: React.FC<PlanCardProps> = ({ plan, planType, selectedPlan, onSelect, disabled = false, disabledMessage = "Em breve!" }) => {
-    const isSelected = selectedPlan === planType;
-    
+const PlanCard: React.FC<PlanCardProps> = ({ title, benefits, isSelected, onSelect, disabled = false }) => {
     const handleClick = () => {
         if (!disabled) {
-            onSelect(planType);
+            onSelect();
         }
     };
     
@@ -284,14 +356,9 @@ const PlanCard: React.FC<PlanCardProps> = ({ plan, planType, selectedPlan, onSel
             onClick={handleClick} 
             className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses} ${disabled ? disabledClasses : enabledClasses}`}
         >
-            {disabled && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-500/50 rounded-lg">
-                    <span className="px-3 py-1 bg-gray-800 text-white text-sm font-bold rounded-full">{disabledMessage}</span>
-                </div>
-            )}
-            <h4 className="text-xl font-bold text-center">{plan.title}</h4>
+            <h4 className="text-xl font-bold text-center">{title}</h4>
             <ul className="mt-4 space-y-2 list-disc list-inside text-gray-600 dark:text-gray-300">
-                {plan.benefits.map((benefit, i) => <li key={i}>{benefit}</li>)}
+                {benefits.map((benefit, i) => <li key={i}>{benefit}</li>)}
             </ul>
         </div>
     )

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth } from '../firebase';
+// FIX: Add missing 'RouteDay' to imports.
 import {
     Client, BudgetQuote, Routes, Product, Order, Settings, ClientProduct, UserData,
     OrderStatus, AppData, ReplenishmentQuote, ReplenishmentQuoteStatus, Bank, Transaction,
-    AdvancePaymentRequest, AdvancePaymentRequestStatus
+    AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan
 } from '../types';
 import { calculateClientMonthlyFee } from '../utils/calculations';
 
@@ -47,7 +48,6 @@ const defaultSettings: Settings = {
         perKm: 1.5,
         wellWaterFee: 50,
         productsFee: 75,
-        vipDiscountPercent: 10,
         volumeTiers: [
             { upTo: 20000, price: 150 },
             { upTo: 50000, price: 250 },
@@ -55,9 +55,14 @@ const defaultSettings: Settings = {
         ],
     },
     plans: {
-        simple: { title: "Plano Simples", benefits: ["Limpeza semanal", "Ajuste de pH e Cloro"] },
-        vip: { title: "Plano VIP", benefits: ["Tudo do Simples", "Produtos inclusos", "Atendimento prioritário"] },
+        simple: { title: "Plano Simples", benefits: ["Limpeza semanal", "Ajuste de pH e Cloro"], terms: "Estes são os termos padrão para o Plano Simples. Edite este texto nas configurações." },
+        vip: { title: "Plano VIP", benefits: ["Tudo do Simples", "Produtos inclusos", "Atendimento prioritário"], terms: "Estes são os termos padrão para o Plano VIP. Edite este texto nas configurações." },
     },
+    fidelityPlans: [
+        { id: '4_months', months: 4, discountPercent: 5 },
+        { id: '6_months', months: 6, discountPercent: 10 },
+        { id: '12_months', months: 12, discountPercent: 15 },
+    ],
     features: {
         vipPlanEnabled: true,
         vipPlanDisabledMessage: "Em breve!",
@@ -258,7 +263,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         
         const scheduledClientIds = new Set();
         Object.keys(routes).forEach(dayKey => {
-            routes[dayKey]?.clients.forEach(client => scheduledClientIds.add(client.id));
+            const routeDay = routes[dayKey] as RouteDay | undefined;
+            routeDay?.clients.forEach(client => scheduledClientIds.add(client.id));
         });
         
         const unscheduled = clients.filter(client => !scheduledClientIds.has(client.id));
@@ -366,6 +372,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 hasWellWater: budget.hasWellWater,
                 includeProducts: budget.includeProducts,
                 plan: budget.plan,
+                fidelityPlan: budget.fidelityPlan,
                 clientStatus: 'Ativo',
                 poolStatus: { ph: 7.2, cloro: 1.5, alcalinidade: 100, uso: 'Livre para uso' },
                 payment: {
@@ -450,7 +457,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     };
 
     const unscheduleClient = async (clientId: string, dayKey: string) => {
-        const routeDay = routes[dayKey];
+        const routeDay = routes[dayKey] as RouteDay | undefined;
         if(!routeDay) return;
         const client = routeDay.clients.find(c => c.id === clientId);
         if (!client) return;
