@@ -1,0 +1,5 @@
+{
+  "name": "Piscina Limpa",
+  "description": "A complete web application for a pool maintenance company, allowing administrators to manage clients, routes, approvals, and a store, while clients can view their service details and make purchases.",
+  "requestFramePermissions": []
+}
