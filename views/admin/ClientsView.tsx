@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { calculateClientMonthlyFee, calculateVolume, normalizeDimension } from '../../utils/calculations';
 import { AppContextType, Client, ClientProduct, PlanType, ClientStatus, PoolUsageStatus, PaymentStatus, Product, Address, Settings, Bank, FidelityPlan } from '../../types';
@@ -81,7 +82,7 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
 
         setIsSaving(true);
         try {
-            await markAsPaid(selectedClient);
+            await markAsPaid(selectedClient, 1, fee);
             showNotification('Pagamento registrado com sucesso!', 'success');
              // Manually update the client in the modal to reflect the change immediately
             setSelectedClient(prev => prev ? {
@@ -400,6 +401,16 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                                 className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                             />
                             Incluir produtos
+                        </label>
+                        <label className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                name="isPartyPool"
+                                checked={clientData.isPartyPool}
+                                onChange={handleCheckboxChange}
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            Piscina para eventos/festa
                         </label>
                     </div>
                 </fieldset>

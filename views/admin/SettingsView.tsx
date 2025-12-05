@@ -234,10 +234,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
                         <strong>Atenção:</strong> Alterar estes valores afetará o preço da mensalidade de <strong>todos</strong> os clientes existentes.
                     </p>
-                     <div className="grid md:grid-cols-3 gap-4 mb-4">
+                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                          <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
                          <Input label="Taxa Água de Poço" name="wellWaterFee" type="number" value={localSettings.pricing.wellWaterFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
                          <Input label="Taxa de Produtos" name="productsFee" type="number" value={localSettings.pricing.productsFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                         <Input label="Taxa Piscina de Festa" name="partyPoolFee" type="number" value={localSettings.pricing.partyPoolFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
                     </div>
                     <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
                     {localSettings.pricing.volumeTiers.map((tier, index) => (

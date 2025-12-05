@@ -1,6 +1,6 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth } from '../firebase';
-// FIX: Add missing 'RouteDay' to imports.
 import {
     Client, BudgetQuote, Routes, Product, Order, Settings, ClientProduct, UserData,
     OrderStatus, AppData, ReplenishmentQuote, ReplenishmentQuoteStatus, Bank, Transaction,
@@ -32,8 +32,8 @@ const deepMerge = (target: any, ...sources: any[]): any => {
 
 
 const defaultSettings: Settings = {
-    companyName: "Piscina Limpa",
-    mainTitle: "Piscina Limpa",
+    companyName: "S.O.S Piscina Limpa",
+    mainTitle: "S.O.S Piscina Limpa",
     mainSubtitle: "Compromisso e Qualidade",
     baseAddress: {
         street: "Rua Principal",
@@ -48,6 +48,7 @@ const defaultSettings: Settings = {
         perKm: 1.5,
         wellWaterFee: 50,
         productsFee: 75,
+        partyPoolFee: 100,
         volumeTiers: [
             { upTo: 20000, price: 150 },
             { upTo: 50000, price: 250 },
@@ -120,7 +121,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 setSetupCheck(adminQuery.empty ? 'needed' : 'done');
             } catch (error) {
                 console.error("Error checking for admin user:", error);
-                setSetupCheck('done'); // Fallback to avoid getting stuck in a setup loop on error
+                setSetupCheck('needed'); 
             }
         };
         checkAdminExists();
@@ -274,8 +275,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     // Products and Settings listeners (publicly available)
     useEffect(() => {
-        if(setupCheck !== 'done') return;
-
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
             setProducts(data);
@@ -291,9 +290,16 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             }
              setLoadingState('settings', false);
         });
+        
+        // Listen for banks publicly for the client dashboard to resolve pix keys
+        const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
+            setBanks(data);
+            setLoadingState('banks', false);
+        });
 
-        return () => { unsubProducts(); unsubSettings(); };
-    }, [setupCheck]);
+        return () => { unsubProducts(); unsubSettings(); unsubBanks(); };
+    }, []); // Removed setupCheck dependency to load settings always
 
      // Client-specific data fetching
     useEffect(() => {
@@ -326,8 +332,10 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             throw new Error("Um administrador já existe. A criação foi cancelada.");
         }
         try {
+            // Restore Firebase Auth usage
             const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
             const newUid = userCredential.user.uid;
+            
             await db.collection('users').doc(newUid).set({
                 name,
                 email,
@@ -337,28 +345,30 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setSetupCheck('done');
         } catch (error: any) {
             console.error("Error creating initial admin:", error);
-            if (error.code === 'auth/email-already-in-use') {
-                throw new Error("Este email já existe na autenticação, mas não como admin. Por favor, remova-o no painel do Firebase e tente novamente.");
-            }
             throw new Error("Falha ao criar administrador: " + error.message);
         }
     };
 
-    const approveBudgetQuote = async (budgetId: string) => {
+    const approveBudgetQuote = async (budgetId: string, password: string) => {
         const budgetDoc = await db.collection('pre-budgets').doc(budgetId).get();
         if (!budgetDoc.exists) throw new Error("Orçamento não encontrado.");
 
         const budget = budgetDoc.data() as BudgetQuote;
 
-        const defaultPassword = "password123";
         try {
-            const userCredential = await auth.createUserWithEmailAndPassword(budget.email, defaultPassword);
+            // Restore Firebase Auth usage
+            const userCredential = await auth.createUserWithEmailAndPassword(budget.email, password);
             const newUid = userCredential.user.uid;
 
             const batch = db.batch();
 
             const userDocRef = db.collection('users').doc(newUid);
-            batch.set(userDocRef, { name: budget.name, email: budget.email, role: 'client', uid: newUid });
+            batch.set(userDocRef, { 
+                name: budget.name, 
+                email: budget.email, 
+                role: 'client', 
+                uid: newUid,
+            });
 
             const clientDocRef = db.collection('clients').doc();
             const newClient: Omit<Client, 'id'> = {
@@ -370,7 +380,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 poolDimensions: budget.poolDimensions,
                 poolVolume: budget.poolVolume,
                 hasWellWater: budget.hasWellWater,
-                includeProducts: budget.includeProducts,
+                includeProducts: false, // Always false from budget
+                isPartyPool: budget.isPartyPool,
                 plan: budget.plan,
                 fidelityPlan: budget.fidelityPlan,
                 clientStatus: 'Ativo',
@@ -393,10 +404,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         } catch (error: any) {
             console.error("Erro ao aprovar orçamento de novo cliente:", error);
-            if (error.code === 'auth/email-already-in-use') {
-                 await db.collection('pre-budgets').doc(budgetId).update({ status: 'rejected' });
-                 throw new Error("Este email já está em uso. Orçamento recusado.");
-            }
             throw error;
         }
     };
@@ -405,20 +412,17 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const updateClient = (clientId: string, data: Partial<Client>) => db.collection('clients').doc(clientId).update(data);
     const deleteClient = (clientId: string) => db.collection('clients').doc(clientId).delete();
 
-    const markAsPaid = async (client: Client) => {
+    const markAsPaid = async (client: Client, months: number, totalAmount: number) => {
         if (!client.bankId) {
             throw new Error("Por favor, associe um banco a este cliente antes de registrar um pagamento.");
         }
-        if (!settings) {
-            throw new Error("Configurações de precificação não carregadas.");
-        }
+        
         const bank = banks.find(b => b.id === client.bankId);
         if (!bank) {
             throw new Error("Banco associado não encontrado. Verifique as configurações.");
         }
         
         const batch = db.batch();
-        const monthlyFee = calculateClientMonthlyFee(client, settings);
 
         const transactionRef = db.collection('transactions').doc();
         const newTransaction: Omit<Transaction, 'id'> = {
@@ -426,13 +430,13 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             clientName: client.name,
             bankId: client.bankId,
             bankName: bank.name,
-            amount: monthlyFee,
+            amount: totalAmount,
             date: firebase.firestore.FieldValue.serverTimestamp(),
         };
         batch.set(transactionRef, newTransaction);
         
         const nextDueDate = new Date(client.payment.dueDate);
-        nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+        nextDueDate.setMonth(nextDueDate.getMonth() + months);
 
         const clientRef = db.collection('clients').doc(client.id);
         const clientUpdate = {
@@ -612,10 +616,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
             await db.collection('routes').doc('main').set({});
             
-            alert('Dados de relatórios foram resetados com sucesso.');
+            // Note: Cannot call showNotification directly here, caller should handle it.
+            return Promise.resolve();
         } catch (error) {
             console.error("Erro ao resetar os dados:", error);
-            alert('Ocorreu um erro ao resetar os dados.');
+            throw error;
         }
     };
 

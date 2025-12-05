@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { AppContextType, Client, Routes, Settings } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { AppContextType, Routes, Settings } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Button } from '../../components/Button';
 import { WeatherCloudyIcon, WeatherSunnyIcon, SparklesIcon, CloudRainIcon } from '../../constants';
 import { Select } from '../../components/Select';
-// This is a workaround for the no-build-tool environment
-declare const GoogleGenAI: any;
 
+// Define a classe globalmente para o TypeScript
+declare global {
+    interface Window {
+        GoogleGenAI: any;
+    }
+}
 
 interface RoutesViewProps {
     appContext: AppContextType;
@@ -139,7 +143,7 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
             setError(null);
 
             try {
-                // 1. Get Coordinates from address, now defaulting to "Governador Valadares, MG"
+                // 1. Get Coordinates from address, defaulting to "Governador Valadares, MG"
                 const addressString = "Governador Valadares, MG";
                 const geoResponse = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressString)}`);
                 const geoData = await geoResponse.json();
@@ -175,15 +179,21 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
             const getAIAnalysis = async () => {
                 setIsAnalyzing(true);
                 try {
-                    if (typeof GoogleGenAI === 'undefined') {
-                      throw new Error("A biblioteca de IA do Google não foi carregada. Verifique o script no index.html.");
+                    // Check for the global GoogleGenAI object
+                    if (typeof window.GoogleGenAI === 'undefined') {
+                      throw new Error("A biblioteca de IA do Google ainda está carregando ou falhou. Tente recarregar a página.");
                     }
-                    if (!process.env.API_KEY) {
-                        setAiAnalysis("Análise da IA indisponível (API Key não configurada).");
+                    
+                    // NOTE: In a real production app without a backend, exposing the key is risky.
+                    // For this project structure, we check if a key is provided.
+                    const apiKey = ""; // INSIRA SUA API KEY DO GEMINI AQUI SE DESEJAR
+                    
+                    if (!apiKey) {
+                        setAiAnalysis("Análise da IA indisponível. (API Key não configurada no código).");
                         return;
                     }
                     
-                    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                    const ai = new window.GoogleGenAI({ apiKey: apiKey });
 
                     const prompt = `
                         Analise os seguintes dados meteorológicos para os próximos 5 dias em Governador Valadares e forneça um resumo e recomendações para o agendamento de serviços de limpeza de piscinas.
@@ -201,7 +211,7 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
 
                 } catch (e: any) {
                     console.error("Erro na análise da IA:", e);
-                    setAiAnalysis("Não foi possível gerar a análise da IA.");
+                    setAiAnalysis("Não foi possível gerar a análise da IA no momento.");
                 } finally {
                     setIsAnalyzing(false);
                 }

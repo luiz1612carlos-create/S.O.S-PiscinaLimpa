@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { AuthContextType, AppContextType } from '../../types';
 import { MoonIcon, SunIcon, LogoutIcon, DashboardIcon, StoreIcon, DownloadIcon, XMarkIcon } from '../../constants';

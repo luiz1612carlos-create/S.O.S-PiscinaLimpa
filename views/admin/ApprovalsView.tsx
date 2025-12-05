@@ -1,8 +1,11 @@
+
 import React, { useState } from 'react';
 import { AppContextType, BudgetQuote, Address } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
+import { Modal } from '../../components/Modal';
+import { Input } from '../../components/Input';
 
 interface ApprovalsViewProps {
     appContext: AppContextType;
@@ -16,12 +19,31 @@ const formatAddress = (address?: Address) => {
 const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
     const { budgetQuotes, loading, approveBudgetQuote, rejectBudgetQuote, showNotification } = appContext;
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [approvalBudget, setApprovalBudget] = useState<BudgetQuote | null>(null);
+    const [password, setPassword] = useState('');
 
-    const handleApprove = async (budgetId: string) => {
-        setProcessingId(budgetId);
+    const handleApproveClick = (budgetId: string) => {
+        const budget = budgetQuotes.find(b => b.id === budgetId);
+        if (budget) {
+            setApprovalBudget(budget);
+            setPassword('');
+        }
+    };
+
+    const handleConfirmApprove = async () => {
+        if (!approvalBudget) return;
+        
+        if (password.length < 6) {
+            showNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
+            return;
+        }
+
+        setProcessingId(approvalBudget.id);
         try {
-            await approveBudgetQuote(budgetId);
+            await approveBudgetQuote(approvalBudget.id, password);
             showNotification('Orçamento aprovado com sucesso!', 'success');
+            setApprovalBudget(null);
+            setPassword('');
         } catch (error: any) {
             showNotification(error.message || 'Erro ao aprovar orçamento.', 'error');
         } finally {
@@ -54,10 +76,35 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {pendingBudgets.map(budget => (
                         <Card key={budget.id}>
-                           <NewClientBudgetCard budget={budget} processingId={processingId} onApprove={handleApprove} onReject={handleReject} />
+                           <NewClientBudgetCard budget={budget} processingId={processingId} onApprove={handleApproveClick} onReject={handleReject} />
                         </Card>
                     ))}
                 </div>
+            )}
+
+            {approvalBudget && (
+                <Modal
+                    isOpen={!!approvalBudget}
+                    onClose={() => setApprovalBudget(null)}
+                    title={`Aprovar Orçamento: ${approvalBudget.name}`}
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setApprovalBudget(null)}>Cancelar</Button>
+                            <Button onClick={handleConfirmApprove} isLoading={processingId === approvalBudget.id}>Confirmar</Button>
+                        </>
+                    }
+                >
+                     <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+                        Defina uma senha inicial para o acesso do cliente ao painel.
+                    </p>
+                    <Input
+                        label="Senha Inicial"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                    />
+                </Modal>
             )}
         </div>
     );
@@ -77,7 +124,7 @@ const NewClientBudgetCard = ({ budget, processingId, onApprove, onReject }: { bu
                  <p><strong>Dimensões:</strong> {budget.poolDimensions.width}m x {budget.poolDimensions.length}m x {budget.poolDimensions.depth}m</p>
                 <p><strong>Volume:</strong> {budget.poolVolume?.toLocaleString('pt-BR')} L</p>
                 <p><strong>Água de Poço:</strong> {budget.hasWellWater ? 'Sim' : 'Não'}</p>
-                <p><strong>Produtos Inclusos:</strong> {budget.includeProducts ? 'Sim' : 'Não'}</p>
+                <p><strong>Piscina de Festa:</strong> {budget.isPartyPool ? 'Sim' : 'Não'}</p>
             </div>
             
             <p><strong>Plano:</strong> 

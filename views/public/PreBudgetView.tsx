@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
@@ -30,6 +31,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     });
     const [options, setOptions] = useState({
         hasWellWater: false,
+        isPartyPool: false,
     });
     const [selectedPlanIdentifier, setSelectedPlanIdentifier] = useState('simples'); // 'simples' or fidelity plan ID
 
@@ -75,6 +77,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         let basePrice = pricing.volumeTiers.find(tier => volume <= tier.upTo)?.price || pricing.volumeTiers[pricing.volumeTiers.length - 1].price;
         
         if (options.hasWellWater) basePrice += pricing.wellWaterFee;
+        if (options.isPartyPool) basePrice += pricing.partyPoolFee;
         
         if (selectedPlanType === 'VIP' && selectedFidelityPlan && settings.features.vipPlanEnabled) {
             basePrice = basePrice * (1 - selectedFidelityPlan.discountPercent / 100);
@@ -142,7 +145,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                 },
                 poolVolume: volume,
                 hasWellWater: options.hasWellWater,
-                includeProducts: false,
+                isPartyPool: options.isPartyPool,
                 plan: selectedPlanType,
                 monthlyFee: monthlyFee,
             };
@@ -156,7 +159,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             setShowSuccessPage(true);
             
             setFormData({ name: '', email: '', phone: '', street: '', number: '', neighborhood: '', city: '', state: '', zip: '', width: '', length: '', depth: '' });
-            setOptions({ hasWellWater: false });
+            setOptions({ hasWellWater: false, isPartyPool: false });
         } catch (error: any) {
             showNotification(error.message || "Falha ao enviar orçamento.", 'error');
         } finally {
@@ -206,6 +209,16 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                                     className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                 />
                                 Água de poço
+                            </label>
+                            <label className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    name="isPartyPool" 
+                                    checked={options.isPartyPool} 
+                                    onChange={handleCheckboxChange} 
+                                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                />
+                                Piscina para eventos/festa?
                             </label>
                         </div>
                         <div className="bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-3 rounded-r-lg">

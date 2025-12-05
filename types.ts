@@ -1,5 +1,4 @@
 
-
 export interface UserData {
     uid: string;
     email: string;
@@ -75,6 +74,7 @@ export interface Client {
     poolVolume: number;
     hasWellWater: boolean;
     includeProducts: boolean;
+    isPartyPool: boolean;
     plan: PlanType;
     fidelityPlan?: FidelityPlan;
     clientStatus: ClientStatus;
@@ -103,7 +103,7 @@ export interface BudgetQuote {
     };
     poolVolume: number;
     hasWellWater: boolean;
-    includeProducts: boolean;
+    isPartyPool: boolean;
     plan: PlanType;
     fidelityPlan?: FidelityPlan;
     monthlyFee: number;
@@ -183,6 +183,7 @@ export interface Settings {
         perKm: number;
         wellWaterFee: number;
         productsFee: number;
+        partyPoolFee: number;
         volumeTiers: {
             upTo: number;
             price: number;
@@ -219,7 +220,7 @@ export interface Settings {
 export type NotificationType = 'success' | 'error' | 'info';
 
 export interface AuthContextType {
-    user: any | null;
+    user: any | null; // Firebase User
     userData: UserData | null;
     login: (email: string, pass: string) => Promise<void>;
     logout: () => Promise<void>;
@@ -261,11 +262,11 @@ export interface AppData {
         count: number;
         percentage: number;
     };
-    approveBudgetQuote: (budgetId: string) => Promise<void>;
+    approveBudgetQuote: (budgetId: string, password: string) => Promise<void>;
     rejectBudgetQuote: (budgetId: string) => Promise<void>;
     updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
     deleteClient: (clientId: string) => Promise<void>;
-    markAsPaid: (client: Client) => Promise<void>;
+    markAsPaid: (client: Client, months: number, totalAmount: number) => Promise<void>;
     updateClientStock: (clientId: string, stock: ClientProduct[]) => Promise<void>;
     scheduleClient: (clientId: string, day: string) => Promise<void>;
     unscheduleClient: (clientId: string, day: string) => Promise<void>;

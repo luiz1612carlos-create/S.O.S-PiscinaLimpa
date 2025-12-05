@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR" class="h-full">
 <head>
@@ -37,22 +38,28 @@
         }
     </script>
 
-    <!-- React 18 (O único caminho certo e estável) -->
+    <!-- React 18 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
     <!-- Chart.js for Reports -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- Google Gemini AI -->
-    <script type="module" src="https://unpkg.com/@google/generative-ai"></script>
+    <!-- Google Gemini AI (Carregamento Correto para Navegador) -->
+    <script type="module">
+      import { GoogleGenAI } from "https://esm.run/@google/genai";
+      window.GoogleGenAI = GoogleGenAI;
+      // Previne erro de 'process is not defined' no navegador
+      window.process = window.process || { env: { API_KEY: '' } };
+    </script>
 
+    <link rel="stylesheet" href="styles.css">
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/"
   }
 }
 </script>
@@ -62,14 +69,14 @@
     <div id="root" class="h-full"></div>
 
     <script>
-      // ATENÇÃO: Substitua o objeto abaixo pelas credenciais do seu projeto Firebase
+      // Suas credenciais do Firebase
       window.firebaseConfig = {
-          apiKey: "AIzaSyC95v0_rz5p1J0exzJNv0WUn57KK9FO7IE",
-          authDomain: "sospiscinalimpa-81979.firebaseapp.com",
-          projectId: "sospiscinalimpa-81979",
-          storageBucket: "sospiscinalimpa-81979.appspot.com",
-          messagingSenderId: "994396714578",
-          appId: "1:994396714578:web:a6bb2558a02b4d7371118b"
+        apiKey: "AIzaSyC95v0_rz5p1J0exzJNv0WUn57KK9FO7IE",
+        authDomain: "sospiscinalimpa-81979.firebaseapp.com",
+        projectId: "sospiscinalimpa-81979",
+        storageBucket: "sospiscinalimpa-81979.firebasestorage.app",
+        messagingSenderId: "994396714578",
+        appId: "1:994396714578:web:ba00210e30e7f66b71118b"
       };
     </script>
 
@@ -78,7 +85,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
-    <!-- Application Entry Point -->
+    <!-- Application Entry Point (ÚNICO) -->
     <script type="module" src="index.tsx"></script>
     
     <!-- Service Worker for PWA -->
@@ -93,6 +100,7 @@
             });
         }
     </script>
+
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
