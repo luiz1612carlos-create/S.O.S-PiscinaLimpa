@@ -647,14 +647,17 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             photoUrl = await snapshot.ref.getDownloadURL();
         }
         
-        const newVisit: Visit = {
+        const newVisit: Omit<Visit, 'photoUrl'> & { photoUrl?: string } = {
             id: visitId,
             technicianId: userData.uid,
             technicianName: userData.name,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            timestamp: firebase.firestore.Timestamp.now(),
             ...visitData,
-            photoUrl: photoUrl || undefined,
         };
+
+        if (photoUrl) {
+            newVisit.photoUrl = photoUrl;
+        }
 
         const clientRef = db.collection('clients').doc(clientId);
         const batch = db.batch();

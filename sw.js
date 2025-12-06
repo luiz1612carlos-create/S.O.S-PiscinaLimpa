@@ -1,4 +1,4 @@
-const CACHE_NAME = "piscina-limpa-v25"; 
+const CACHE_NAME = "piscina-limpa-v28"; 
 
 const APP_SHELL_FILES = [
   './',
@@ -46,6 +46,15 @@ self.addEventListener("activate", event => {
 });
 
 self.addEventListener("fetch", event => {
+    const requestUrl = new URL(event.request.url);
+
+    // Bypass Firebase, Google APIs, and other external resources to avoid conflicts.
+    // This prevents the service worker from interfering with critical SDK functionality.
+    if (requestUrl.hostname.endsWith('googleapis.com') ||
+        requestUrl.hostname.endsWith('gstatic.com')) {
+        return; // Let the browser handle it without service worker interception.
+    }
+
     // For navigation requests, try network first, then cache, then offline page.
     if (event.request.mode === 'navigate') {
         event.respondWith(

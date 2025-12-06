@@ -106,17 +106,32 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
     const [isSavingStock, setIsSavingStock] = useState(false);
     
     // Form state
-    const [ph, setPh] = useState(client.poolStatus.ph.toString());
-    const [cloro, setCloro] = useState(client.poolStatus.cloro.toString());
-    const [alcalinidade, setAlcalinidade] = useState(client.poolStatus.alcalinidade.toString());
-    const [uso, setUso] = useState<PoolUsageStatus>(client.poolStatus.uso);
+    const [ph, setPh] = useState('');
+    const [cloro, setCloro] = useState('');
+    const [alcalinidade, setAlcalinidade] = useState('');
+    const [uso, setUso] = useState<PoolUsageStatus>('Livre para uso');
     const [notes, setNotes] = useState('');
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-    const [stockData, setStockData] = useState<ClientProduct[]>(client.stock || []);
+    const [stockData, setStockData] = useState<ClientProduct[]>([]);
 
+    // FIX: Use useEffect to correctly sync the modal's state with the selected client prop.
+    // This solves the issue of stale data being shown and saved.
     useEffect(() => {
         if (client) {
+            // Reset view state
+            setIsAddingVisit(false);
+            
+            // Reset visit form fields
+            setPh(client.poolStatus.ph.toString());
+            setCloro(client.poolStatus.cloro.toString());
+            setAlcalinidade(client.poolStatus.alcalinidade.toString());
+            setUso(client.poolStatus.uso);
+            setNotes('');
+            setPhotoFile(null);
+            setPhotoPreview(null);
+            
+            // Reset stock data
             setStockData(client.stock || []);
         }
     }, [client]);
