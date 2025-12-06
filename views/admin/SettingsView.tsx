@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan } from '../../types';
+import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData } from '../../types';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
@@ -214,6 +214,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 {/* Bank Management */}
                 <BankManager appContext={appContext} />
 
+                {/* User Management */}
+                <UserManager appContext={appContext} />
+
                  {/* Automations */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Automações</h3>
@@ -341,6 +344,118 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     </form>
                 </div>
             </div>
+        </div>
+    );
+};
+
+const UserManager = ({ appContext }: { appContext: AppContextType }) => {
+    const { users, loading, createTechnician, showNotification } = appContext;
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+
+    const handleOpenModal = () => {
+        setName('');
+        setEmail('');
+        setPassword('');
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+    };
+    
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (password.length < 6) {
+            showNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await createTechnician(name, email, password);
+            showNotification('Técnico criado com sucesso! Você será desconectado.', 'success');
+            // No need to close modal, the page will reload to the login screen.
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao criar técnico.', 'error');
+            setIsSaving(false); // Only set saving to false on error
+        }
+    };
+
+    return (
+        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold">Gestão de Usuários (Admin/Técnicos)</h3>
+                <Button size="sm" onClick={handleOpenModal}>
+                    <PlusIcon className="w-4 h-4 mr-1" /> Adicionar Técnico
+                </Button>
+            </div>
+            {loading.users ? <Spinner /> : (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead className="border-b dark:border-gray-700">
+                            <tr>
+                                <th className="text-left p-2 font-semibold">Nome</th>
+                                <th className="text-left p-2 font-semibold">Email</th>
+                                <th className="text-left p-2 font-semibold">Função</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {users.map(user => (
+                                <tr key={user.uid} className="border-b dark:border-gray-700">
+                                    <td className="p-2">{user.name}</td>
+                                    <td className="p-2">{user.email}</td>
+                                    <td className="p-2 capitalize">{user.role}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+             <Modal 
+                isOpen={isModalOpen} 
+                onClose={handleCloseModal} 
+                title="Adicionar Novo Técnico"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={handleCloseModal} disabled={isSaving}>Cancelar</Button>
+                        {/* The form submission is handled by the form's onSubmit */}
+                    </>
+                }
+            >
+                <form onSubmit={handleSave} className="space-y-4">
+                    <Input 
+                        label="Nome Completo do Técnico" 
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                    />
+                    <Input 
+                        label="Email do Técnico"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                    />
+                    <Input 
+                        label="Senha Inicial"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        placeholder="Mínimo 6 caracteres"
+                    />
+                    <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 rounded-r-lg text-sm">
+                        <strong>Atenção:</strong> Por segurança, ao criar um novo técnico você será desconectado e precisará fazer login novamente.
+                    </div>
+                     <div className="flex justify-end">
+                        <Button type="submit" isLoading={isSaving}>Salvar Técnico</Button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };

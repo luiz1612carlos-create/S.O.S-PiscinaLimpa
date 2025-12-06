@@ -181,6 +181,31 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     </div>
                 ) : null}
 
+                {/* Visit History */}
+                <Card>
+                    <CardHeader><h3 className="text-xl font-semibold">Histórico de Visitas</h3></CardHeader>
+                    <CardContent className="space-y-3 max-h-96 overflow-y-auto">
+                        {clientData.visitHistory && clientData.visitHistory.length > 0 ?
+                            [...clientData.visitHistory].sort((a, b) => (toDate(b.timestamp)?.getTime() || 0) - (toDate(a.timestamp)?.getTime() || 0)).map(visit => (
+                                <div key={visit.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <p className="font-semibold text-sm">
+                                        {toDate(visit.timestamp)?.toLocaleString('pt-BR')}
+                                        <span className="font-normal text-gray-500"> por {visit.technicianName}</span>
+                                    </p>
+                                    <p className="text-xs mt-1">
+                                        <span title="pH">pH: {visit.ph}</span> | 
+                                        <span title="Cloro"> Cl: {visit.cloro}</span> | 
+                                        <span title="Alcalinidade"> Alc: {visit.alcalinidade}</span> | 
+                                        <span className={`font-bold ${visit.uso === 'Livre para uso' ? 'text-green-500' : 'text-yellow-500'}`}> {visit.uso}</span>
+                                    </p>
+                                    {visit.notes && <p className="mt-1 text-sm italic bg-white dark:bg-gray-800 p-2 rounded">"{visit.notes}"</p>}
+                                    {visit.photoUrl && <a href={visit.photoUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-500 hover:underline mt-1 inline-block">Ver Foto da Visita</a>}
+                                </div>
+                            ))
+                            : <p className="text-gray-500">Nenhum registro de visita encontrado.</p>
+                        }
+                    </CardContent>
+                </Card>
 
                 {/* Pool Status */}
                 <Card>

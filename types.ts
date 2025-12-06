@@ -1,9 +1,10 @@
 
+
 export interface UserData {
     uid: string;
     email: string;
     name: string;
-    role: 'admin' | 'client';
+    role: 'admin' | 'client' | 'technician';
 }
 
 export type PlanType = 'Simples' | 'VIP';
@@ -59,6 +60,19 @@ export interface FidelityPlan {
     discountPercent: number;
 }
 
+export interface Visit {
+    id: string;
+    technicianId: string;
+    technicianName: string;
+    timestamp: any; // Firestore Timestamp
+    ph: number;
+    cloro: number;
+    alcalinidade: number;
+    uso: PoolUsageStatus;
+    notes: string;
+    photoUrl?: string;
+}
+
 export interface Client {
     id: string;
     uid?: string;
@@ -87,6 +101,7 @@ export interface Client {
     pixKey?: string;
     bankId?: string;
     createdAt: any; // Firestore Timestamp
+    visitHistory?: Visit[];
     lastVisitDuration?: number; // in minutes
 }
 
@@ -128,6 +143,13 @@ export interface Product {
     price: number;
     stock: number;
     imageUrl: string;
+}
+
+export interface StockProduct {
+    id: string;
+    name: string;
+    description: string;
+    unit: 'kg' | 'L' | 'un' | 'm' | 'm²' | 'pastilha';
 }
 
 export interface CartItem extends Product {
@@ -234,10 +256,12 @@ export interface AppContextType extends AppData {
 
 export interface AppData {
     clients: Client[];
+    users: UserData[];
     budgetQuotes: BudgetQuote[];
     routes: Routes;
     unscheduledClients: Client[];
     products: Product[];
+    stockProducts: StockProduct[];
     orders: Order[];
     banks: Bank[];
     transactions: Transaction[];
@@ -246,9 +270,11 @@ export interface AppData {
     settings: Settings | null;
     loading: {
         clients: boolean;
+        users: boolean;
         budgetQuotes: boolean;
         routes: boolean;
         products: boolean;
+        stockProducts: boolean;
         orders: boolean;
         settings: boolean;
         banks: boolean;
@@ -273,6 +299,8 @@ export interface AppData {
     toggleRouteStatus: (day: string, status: boolean) => Promise<void>;
     saveProduct: (product: Omit<Product, 'id'> | Product) => Promise<void>;
     deleteProduct: (productId: string) => Promise<void>;
+    saveStockProduct: (product: Omit<StockProduct, 'id'> | StockProduct) => Promise<void>;
+    deleteStockProduct: (productId: string) => Promise<void>;
     saveBank: (bank: Omit<Bank, 'id'> | Bank) => Promise<void>;
     deleteBank: (bankId: string) => Promise<void>;
     updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
@@ -281,11 +309,13 @@ export interface AppData {
     createOrder: (order: Omit<Order, 'id' | 'createdAt'>) => Promise<void>;
     getClientData: () => Promise<Client | null>;
     createInitialAdmin: (name: string, email: string, pass: string) => Promise<void>;
+    createTechnician: (name: string, email: string, pass: string) => Promise<void>;
     updateReplenishmentQuoteStatus: (quoteId: string, status: ReplenishmentQuoteStatus) => Promise<void>;
     createAdvancePaymentRequest: (request: Omit<AdvancePaymentRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>) => Promise<void>;
     approveAdvancePaymentRequest: (requestId: string) => Promise<void>;
     rejectAdvancePaymentRequest: (requestId: string) => Promise<void>;
+    addVisitRecord: (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File) => Promise<void>;
     resetReportsData: () => Promise<void>;
 }
 
-export type AdminView = 'reports' | 'clients' | 'routes' | 'approvals' | 'store' | 'settings' | 'advances';
+export type AdminView = 'reports' | 'clients' | 'routes' | 'approvals' | 'store' | 'stock' | 'settings' | 'advances';

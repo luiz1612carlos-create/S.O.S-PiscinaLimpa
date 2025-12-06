@@ -7,6 +7,7 @@ import LoginView from './views/public/LoginView';
 import PreBudgetView from './views/public/PreBudgetView';
 import AdminLayout from './views/admin/AdminLayout';
 import ClientLayout from './views/client/ClientLayout';
+import TechnicianLayout from './views/technician/TechnicianLayout';
 import { Spinner } from './components/Spinner';
 import { Notification } from './components/Notification';
 import { NotificationType } from './types';
@@ -57,6 +58,9 @@ const App: React.FC = () => {
     const renderContent = () => {
         if (userData?.role === 'admin') {
             return <AdminLayout authContext={authContextValue} appContext={appContextValue} />;
+        }
+        if (userData?.role === 'technician') {
+            return <TechnicianLayout authContext={authContextValue} appContext={appContextValue} />;
         }
         if (userData?.role === 'client') {
             return <ClientLayout authContext={authContextValue} appContext={appContextValue} />;

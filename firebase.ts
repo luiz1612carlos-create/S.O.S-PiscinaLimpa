@@ -37,7 +37,8 @@ if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
 const app = firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+const storage = firebase.storage();
 
 const firebaseExport = firebase;
 
-export { auth, db, firebaseExport as firebase };
+export { auth, db, storage, firebaseExport as firebase };

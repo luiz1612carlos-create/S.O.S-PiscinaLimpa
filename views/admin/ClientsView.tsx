@@ -1,14 +1,13 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { calculateClientMonthlyFee, calculateVolume, normalizeDimension } from '../../utils/calculations';
-import { AppContextType, Client, ClientProduct, PlanType, ClientStatus, PoolUsageStatus, PaymentStatus, Product, Address, Settings, Bank, FidelityPlan } from '../../types';
+import { AppContextType, Client, ClientProduct, PlanType, ClientStatus, PoolUsageStatus, PaymentStatus, Product, Address, Settings, Bank, FidelityPlan, Visit, StockProduct } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
-import { TrashIcon } from '../../constants';
+import { ClientStockManager } from '../../components/ClientStockManager';
 
 interface ClientsViewProps {
     appContext: AppContextType;
@@ -19,9 +18,17 @@ const formatAddress = (address: Address) => {
     return `${address.street}, ${address.number} - ${address.city}`;
 };
 
+const toDate = (timestamp: any): Date | null => {
+    if (!timestamp) return null;
+    if (typeof timestamp.toDate === 'function') return timestamp.toDate();
+    if (typeof timestamp === 'string') return new Date(timestamp);
+    if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
+    return null;
+};
+
 
 const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
-    const { clients, loading, products, banks, updateClient, deleteClient, markAsPaid, showNotification, settings } = appContext;
+    const { clients, loading, products, banks, updateClient, deleteClient, markAsPaid, showNotification, settings, stockProducts } = appContext;
     const [filterPlan, setFilterPlan] = useState<PlanType | 'Todos'>('Todos');
     const [filterStatus, setFilterStatus] = useState<ClientStatus | 'Todos'>('Todos');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -151,7 +158,7 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                     onMarkPaid={handleMarkPaid}
                     isSaving={isSaving}
                     isDeleting={isDeleting}
-                    products={products}
+                    stockProducts={stockProducts}
                     banks={banks}
                     settings={settings}
                 />
@@ -177,13 +184,13 @@ interface ClientEditModalProps {
     onMarkPaid: () => void;
     isSaving: boolean;
     isDeleting: boolean;
-    products: Product[];
+    stockProducts: StockProduct[];
     banks: Bank[];
     settings: Settings | null;
 }
 
 const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
-    const { client, isOpen, onClose, onSave, onDelete, onMarkPaid, isSaving, isDeleting, products, banks, settings } = props;
+    const { client, isOpen, onClose, onSave, onDelete, onMarkPaid, isSaving, isDeleting, stockProducts, banks, settings } = props;
     const [clientData, setClientData] = useState<ClientFormData>(client);
     const [errors, setErrors] = useState<{ dueDate?: string; pixKey?: string; }>({});
 
@@ -471,8 +478,24 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                 </fieldset>
                 
                 {/* Client Stock */}
-                <ClientStockManager stock={clientData.stock} allProducts={products} onStockChange={(newStock) => setClientData(prev => ({...prev, stock: newStock}))} />
+                <ClientStockManager stock={clientData.stock} allStockProducts={stockProducts} onStockChange={(newStock) => setClientData(prev => ({...prev, stock: newStock}))} />
 
+                {/* Visit History */}
+                <fieldset className="border p-4 rounded-md dark:border-gray-600">
+                    <legend className="px-2 font-semibold">Histórico de Visitas</legend>
+                    <div className="space-y-3 max-h-64 overflow-y-auto pr-2 mt-2">
+                        {(clientData.visitHistory && clientData.visitHistory.length > 0) ? [...clientData.visitHistory].sort((a, b) => (toDate(b.timestamp)?.getTime() || 0) - (toDate(a.timestamp)?.getTime() || 0)).map(visit => (
+                            <div key={visit.id} className="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
+                                <p className="font-semibold text-sm">
+                                    {toDate(visit.timestamp)?.toLocaleString('pt-BR')} por {visit.technicianName}
+                                </p>
+                                <p className="text-xs">pH: {visit.ph} | Cloro: {visit.cloro} | Alc: {visit.alcalinidade} | Uso: {visit.uso}</p>
+                                {visit.notes && <p className="mt-1 text-sm italic">"{visit.notes}"</p>}
+                                {visit.photoUrl && <a href={visit.photoUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-500 hover:underline mt-1 inline-block">Ver Foto</a>}
+                            </div>
+                        )) : <p className="text-gray-500">Nenhuma visita registrada.</p>}
+                    </div>
+                </fieldset>
             </div>
             <div className="mt-6 flex justify-between">
                 <Button variant="danger" onClick={onDelete} isLoading={isDeleting}>
@@ -486,71 +509,5 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
         </Modal>
     )
 }
-
-const ClientStockManager = ({ stock, allProducts, onStockChange }: { stock: ClientProduct[], allProducts: Product[], onStockChange: (stock: ClientProduct[]) => void }) => {
-    const [selectedProduct, setSelectedProduct] = useState('');
-    const [quantity, setQuantity] = useState(1);
-
-    const addProductToStock = () => {
-        const productToAdd = allProducts.find(p => p.id === selectedProduct);
-        if (productToAdd && !stock.some(p => p.productId === selectedProduct)) {
-            onStockChange([...stock, { productId: productToAdd.id, name: productToAdd.name, quantity }]);
-        }
-    };
-
-    const removeProductFromStock = (productId: string) => {
-        onStockChange(stock.filter(p => p.productId !== productId));
-    };
-
-    const updateQuantity = (productId: string, newQuantity: number) => {
-        onStockChange(stock.map(p => p.productId === productId ? { ...p, quantity: newQuantity } : p));
-    };
-
-    return (
-        <fieldset className="border p-4 rounded-md dark:border-gray-600">
-            <legend className="px-2 font-semibold">Estoque de Produtos do Cliente</legend>
-            <div className="flex gap-2 my-2">
-                <Select
-                    label=""
-                    value={selectedProduct}
-                    onChange={e => setSelectedProduct(e.target.value)}
-                    options={[{ value: '', label: 'Selecione um produto...' }, ...allProducts.map(p => ({ value: p.id, label: p.name }))]}
-                    containerClassName="flex-1 mb-0"
-                />
-                <Input
-                    label=""
-                    type="number"
-                    value={quantity}
-                    onChange={e => setQuantity(parseInt(e.target.value))}
-                    min="1"
-                    containerClassName="w-24 mb-0"
-                />
-                <Button onClick={addProductToStock} size="md" className="self-end">+</Button>
-            </div>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-                {stock.map(item => (
-                    <div key={item.productId} className="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-700 rounded">
-                        <span>{item.name}</span>
-                        <div className="flex items-center gap-2">
-                            <Input
-                                label=""
-                                type="number"
-                                value={item.quantity}
-                                onChange={e => updateQuantity(item.productId, parseInt(e.target.value))}
-                                min="0"
-                                containerClassName="w-20 mb-0"
-                                className="p-1 text-center"
-                            />
-                            <Button variant="danger" size="sm" onClick={() => removeProductFromStock(item.productId)}>
-                                <TrashIcon className="w-4 h-4" />
-                            </Button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </fieldset>
-    );
-};
-
 
 export default ClientsView;

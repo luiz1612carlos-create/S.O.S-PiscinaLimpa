@@ -1,10 +1,11 @@
 
+
 import { useState, useEffect, useCallback } from 'react';
-import { db, firebase, auth } from '../firebase';
+import { db, firebase, auth, storage } from '../firebase';
 import {
     Client, BudgetQuote, Routes, Product, Order, Settings, ClientProduct, UserData,
     OrderStatus, AppData, ReplenishmentQuote, ReplenishmentQuoteStatus, Bank, Transaction,
-    AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan
+    AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan, Visit, StockProduct
 } from '../types';
 import { calculateClientMonthlyFee } from '../utils/calculations';
 
@@ -85,10 +86,12 @@ const defaultSettings: Settings = {
 
 export const useAppData = (user: any | null, userData: UserData | null): AppData => {
     const [clients, setClients] = useState<Client[]>([]);
+    const [users, setUsers] = useState<UserData[]>([]);
     const [budgetQuotes, setBudgetQuotes] = useState<BudgetQuote[]>([]);
     const [routes, setRoutes] = useState<Routes>({});
     const [unscheduledClients, setUnscheduledClients] = useState<Client[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
+    const [stockProducts, setStockProducts] = useState<StockProduct[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [banks, setBanks] = useState<Bank[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -103,10 +106,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
 
     const [loading, setLoading] = useState({
-        clients: true, budgetQuotes: true, routes: true, products: true, orders: true, settings: true, replenishmentQuotes: true, banks: true, transactions: true, advancePaymentRequests: true
+        clients: true, users: true, budgetQuotes: true, routes: true, products: true, stockProducts: true, orders: true, settings: true, replenishmentQuotes: true, banks: true, transactions: true, advancePaymentRequests: true
     });
 
     const isUserAdmin = userData?.role === 'admin';
+    const isUserTechnician = userData?.role === 'technician';
 
     // Generic function to set loading state
     const setLoadingState = <K extends keyof typeof loading>(key: K, value: boolean) => {
@@ -211,7 +215,14 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     }, [isUserAdmin, settings, clients, products, replenishmentQuotes]);
 
     useEffect(() => {
-        if (!isUserAdmin) return;
+        if (!isUserAdmin && !isUserTechnician) return;
+
+        const unsubUsers = db.collection('users').where('role', 'in', ['admin', 'technician']).onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => doc.data() as UserData);
+            setUsers(data);
+            setLoadingState('users', false);
+        });
+        
         const unsubClients = db.collection('clients').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
             setClients(data);
@@ -253,10 +264,15 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setAdvancePaymentRequests(data);
             setLoadingState('advancePaymentRequests', false);
         });
+        const unsubStockProducts = db.collection('stockProducts').onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockProduct));
+            setStockProducts(data);
+            setLoadingState('stockProducts', false);
+        });
 
 
-        return () => { unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); };
-    }, [isUserAdmin]);
+        return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); };
+    }, [isUserAdmin, isUserTechnician]);
     
     // Unscheduled Clients Logic
     useEffect(() => {
@@ -348,6 +364,36 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             throw new Error("Falha ao criar administrador: " + error.message);
         }
     };
+
+    const createTechnician = async (name: string, email: string, pass: string) => {
+        // WARNING: This client-side method will sign out the current admin user.
+        // A backend function (Firebase Function) is the recommended way to handle user creation by an admin.
+        // Given the project constraints, we proceed with this method and the admin will need to log in again.
+        try {
+            const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
+            const newUid = userCredential.user.uid;
+        
+            await db.collection('users').doc(newUid).set({
+                name,
+                email,
+                role: 'technician',
+                uid: newUid,
+            });
+
+            // At this point, the admin is logged out. We sign out the newly created tech
+            // to ensure they are not left logged in, forcing a clean login flow for everyone.
+            await auth.signOut();
+        } catch (error: any) {
+            // If user creation fails, the admin should still be logged in.
+            // We can check for specific errors, like 'auth/email-already-in-use'.
+            console.error("Error creating technician:", error);
+            if (error.code === 'auth/email-already-in-use') {
+                throw new Error("Este e-mail já está em uso por outra conta.");
+            }
+            throw new Error("Falha ao criar a conta do técnico.");
+        }
+    };
+
 
     const approveBudgetQuote = async (budgetId: string, password: string) => {
         const budgetDoc = await db.collection('pre-budgets').doc(budgetId).get();
@@ -485,6 +531,15 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     const deleteProduct = (productId: string) => db.collection('products').doc(productId).delete();
     
+    const saveStockProduct = (product: Omit<StockProduct, 'id'> | StockProduct) => {
+        if ('id' in product) {
+            return db.collection('stockProducts').doc(product.id).update(product);
+        }
+        return db.collection('stockProducts').add(product);
+    };
+
+    const deleteStockProduct = (productId: string) => db.collection('stockProducts').doc(productId).delete();
+
     const saveBank = (bank: Omit<Bank, 'id'> | Bank) => {
         if ('id' in bank) {
             return db.collection('banks').doc(bank.id).update(bank);
@@ -578,6 +633,44 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
+    const addVisitRecord = async (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File) => {
+        if (!userData || (userData.role !== 'admin' && userData.role !== 'technician')) {
+            throw new Error("Apenas administradores ou técnicos podem registrar visitas.");
+        }
+    
+        const visitId = db.collection('clients').doc().id;
+        let photoUrl = '';
+
+        if (photoFile) {
+            const storageRef = storage.ref(`visits/${clientId}/${visitId}_${photoFile.name}`);
+            const snapshot = await storageRef.put(photoFile);
+            photoUrl = await snapshot.ref.getDownloadURL();
+        }
+        
+        const newVisit: Visit = {
+            id: visitId,
+            technicianId: userData.uid,
+            technicianName: userData.name,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            ...visitData,
+            photoUrl: photoUrl || undefined,
+        };
+
+        const clientRef = db.collection('clients').doc(clientId);
+        const batch = db.batch();
+        
+        batch.update(clientRef, {
+            visitHistory: firebase.firestore.FieldValue.arrayUnion(newVisit),
+            'poolStatus.ph': visitData.ph,
+            'poolStatus.cloro': visitData.cloro,
+            'poolStatus.alcalinidade': visitData.alcalinidade,
+            'poolStatus.uso': visitData.uso,
+        });
+
+        await batch.commit();
+    };
+
+
     const getClientData = useCallback(async (): Promise<Client | null> => {
         if (userData?.role !== 'client' || !user) return null;
         setLoadingState('clients', true);
@@ -626,13 +719,14 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
 
     return {
-        clients, budgetQuotes, routes, unscheduledClients, products, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, loading,
-        setupCheck, createInitialAdmin,
+        clients, users, budgetQuotes, routes, unscheduledClients, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, loading,
+        setupCheck, createInitialAdmin, createTechnician,
         isAdvancePlanGloballyAvailable, advancePlanUsage,
         approveBudgetQuote, rejectBudgetQuote, updateClient, deleteClient, markAsPaid, updateClientStock,
-        scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveBank, deleteBank,
+        scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, saveBank, deleteBank,
         updateOrderStatus, updateSettings, createBudgetQuote, createOrder, getClientData,
         updateReplenishmentQuoteStatus, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
+        addVisitRecord,
         resetReportsData,
     };
 };

@@ -1,7 +1,8 @@
 
+
 import React, { useState } from 'react';
 import { AuthContextType, AppContextType, AdminView } from '../../types';
-import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon } from '../../constants';
+import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon, ArchiveBoxIcon } from '../../constants';
 import { useTheme } from '../../hooks/useTheme';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import ClientsView from './ClientsView';
@@ -11,6 +12,7 @@ import StoreAdminView from './StoreAdminView';
 import SettingsView from './SettingsView';
 import ReportsView from './ReportsView';
 import AdvancePaymentsView from './AdvancePaymentsView';
+import StockProductsView from './StockProductsView';
 
 interface AdminLayoutProps {
     authContext: AuthContextType;
@@ -31,6 +33,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
         { id: 'clients', label: 'Clientes', icon: UsersIcon },
         { id: 'routes', label: 'Rotas', icon: RouteIcon },
         { id: 'store', label: 'Loja', icon: StoreIcon },
+        { id: 'stock', label: 'Estoque Mestre', icon: ArchiveBoxIcon },
         { id: 'settings', label: 'Configurações', icon: SettingsIcon },
     ];
     
@@ -41,6 +44,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
             case 'routes': return <RoutesView appContext={appContext} />;
             case 'approvals': return <ApprovalsView appContext={appContext} />;
             case 'store': return <StoreAdminView appContext={appContext} />;
+            case 'stock': return <StockProductsView appContext={appContext} />;
             case 'settings': return <SettingsView appContext={appContext} authContext={authContext} />;
             case 'advances': return <AdvancePaymentsView appContext={appContext} />;
             default: return <ReportsView appContext={appContext} />;
