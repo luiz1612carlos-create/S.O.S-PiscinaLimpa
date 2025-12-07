@@ -193,13 +193,11 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                       throw new Error("A biblioteca de IA do Google ainda está carregando ou falhou. Tente recarregar a página.");
                     }
                     
-                    // The environment is expected to polyfill `window.process.env.API_KEY`.
-                    if (!window.process?.env?.API_KEY) {
-                        setAiAnalysis("Análise da IA indisponível. (Chave de API não configurada no ambiente).");
-                        return;
-                    }
-                    
-                    const ai = new window.GoogleGenAI({ apiKey: window.process.env.API_KEY });
+                    const apiKey = window.process?.env?.API_KEY;
+
+                    // The Gemini SDK will throw an error if the key is missing or invalid.
+                    // We catch it below to provide a user-friendly message.
+                    const ai = new window.GoogleGenAI({ apiKey: apiKey });
 
                     const prompt = `
                         Analise os seguintes dados meteorológicos para os próximos 5 dias em Governador Valadares e forneça um resumo e recomendações para o agendamento de serviços de limpeza de piscinas.
@@ -221,11 +219,11 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
 
                 } catch (e: any) {
                     console.error("Erro na análise da IA:", e);
-                    let errorMessage = "Não foi possível gerar a análise da IA no momento.";
-                    if (e.message && e.message.includes('API key not valid')) {
-                        errorMessage = "Análise da IA falhou: Chave de API inválida.";
+                    if (e.message && (e.message.includes('API key not valid') || e.message.includes('API key not found'))) {
+                        setAiAnalysis("Análise da IA indisponível. (API Key não configurada ou inválida).");
+                    } else {
+                        setAiAnalysis("Não foi possível gerar a análise da IA: " + e.message);
                     }
-                    setAiAnalysis(errorMessage);
                 } finally {
                     setIsAnalyzing(false);
                 }
