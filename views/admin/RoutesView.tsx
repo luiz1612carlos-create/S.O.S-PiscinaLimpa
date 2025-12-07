@@ -11,6 +11,11 @@ import { Select } from '../../components/Select';
 declare global {
     interface Window {
         GoogleGenAI: any;
+        process: {
+            env: {
+                API_KEY: string;
+            }
+        }
     }
 }
 
@@ -181,22 +186,20 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
         if (forecast.length > 0) {
             const getAIAnalysis = async () => {
                 setIsAnalyzing(true);
+                setAiAnalysis(''); // Clear previous analysis
                 try {
                     // Check for the global GoogleGenAI object
                     if (typeof window.GoogleGenAI === 'undefined') {
                       throw new Error("A biblioteca de IA do Google ainda está carregando ou falhou. Tente recarregar a página.");
                     }
                     
-                    // NOTE: In a real production app without a backend, exposing the key is risky.
-                    // For this project structure, we check if a key is provided.
-                    const apiKey = ""; // INSIRA SUA API KEY DO GEMINI AQUI SE DESEJAR
-                    
-                    if (!apiKey) {
-                        setAiAnalysis("Análise da IA indisponível. (API Key não configurada no código).");
+                    // The environment is expected to polyfill `window.process.env.API_KEY`.
+                    if (!window.process?.env?.API_KEY) {
+                        setAiAnalysis("Análise da IA indisponível. (Chave de API não configurada no ambiente).");
                         return;
                     }
                     
-                    const ai = new window.GoogleGenAI({ apiKey: apiKey });
+                    const ai = new window.GoogleGenAI({ apiKey: window.process.env.API_KEY });
 
                     const prompt = `
                         Analise os seguintes dados meteorológicos para os próximos 5 dias em Governador Valadares e forneça um resumo e recomendações para o agendamento de serviços de limpeza de piscinas.
@@ -210,11 +213,19 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                         contents: prompt,
                     });
                     
-                    setAiAnalysis(response.text);
+                    const analysisText = response.text;
+                    if (!analysisText) {
+                        throw new Error("A IA retornou uma resposta vazia.");
+                    }
+                    setAiAnalysis(analysisText);
 
                 } catch (e: any) {
                     console.error("Erro na análise da IA:", e);
-                    setAiAnalysis("Não foi possível gerar a análise da IA no momento.");
+                    let errorMessage = "Não foi possível gerar a análise da IA no momento.";
+                    if (e.message && e.message.includes('API key not valid')) {
+                        errorMessage = "Análise da IA falhou: Chave de API inválida.";
+                    }
+                    setAiAnalysis(errorMessage);
                 } finally {
                     setIsAnalyzing(false);
                 }
