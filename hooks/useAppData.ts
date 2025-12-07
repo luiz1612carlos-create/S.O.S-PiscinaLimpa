@@ -1,11 +1,14 @@
 
 
+
+
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
     Client, BudgetQuote, Routes, Product, Order, Settings, ClientProduct, UserData,
     OrderStatus, AppData, ReplenishmentQuote, ReplenishmentQuoteStatus, Bank, Transaction,
-    AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan, Visit, StockProduct
+    AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan, Visit, StockProduct,
+    PendingPriceChange, PricingSettings, AffectedClientPreview, PoolEvent
 } from '../types';
 import { calculateClientMonthlyFee } from '../utils/calculations';
 
@@ -83,13 +86,20 @@ const defaultSettings: Settings = {
     ]
 };
 
+const toDate = (timestamp: any): Date | null => {
+    if (!timestamp) return null;
+    if (typeof timestamp.toDate === 'function') return timestamp.toDate();
+    if (typeof timestamp === 'string') return new Date(timestamp);
+    if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
+    return null;
+};
+
 
 export const useAppData = (user: any | null, userData: UserData | null): AppData => {
     const [clients, setClients] = useState<Client[]>([]);
     const [users, setUsers] = useState<UserData[]>([]);
     const [budgetQuotes, setBudgetQuotes] = useState<BudgetQuote[]>([]);
     const [routes, setRoutes] = useState<Routes>({});
-    const [unscheduledClients, setUnscheduledClients] = useState<Client[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [stockProducts, setStockProducts] = useState<StockProduct[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
@@ -98,6 +108,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const [settings, setSettings] = useState<Settings | null>(null);
     const [replenishmentQuotes, setReplenishmentQuotes] = useState<ReplenishmentQuote[]>([]);
     const [advancePaymentRequests, setAdvancePaymentRequests] = useState<AdvancePaymentRequest[]>([]);
+    const [pendingPriceChanges, setPendingPriceChanges] = useState<PendingPriceChange[]>([]);
+    const [poolEvents, setPoolEvents] = useState<PoolEvent[]>([]);
     const [setupCheck, setSetupCheck] = useState<'checking' | 'needed' | 'done'>('checking');
     
     // New state for advance plan logic
@@ -106,7 +118,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
 
     const [loading, setLoading] = useState({
-        clients: true, users: true, budgetQuotes: true, routes: true, products: true, stockProducts: true, orders: true, settings: true, replenishmentQuotes: true, banks: true, transactions: true, advancePaymentRequests: true
+        clients: true, users: true, budgetQuotes: true, routes: true, products: true, stockProducts: true, orders: true, settings: true, replenishmentQuotes: true, banks: true, transactions: true, advancePaymentRequests: true, pendingPriceChanges: true, poolEvents: true
     });
 
     const isUserAdmin = userData?.role === 'admin';
@@ -140,12 +152,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         }
         const today = new Date();
         const advancePlanClientCount = activeClients.filter(c => {
-            if (!c.payment.dueDate) return false;
-            const dueDate = new Date(c.payment.dueDate);
-            const diffTime = dueDate.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            // A client is on an advance plan if their due date is more than 32 days away
-            return diffDays > 32;
+            if (!c.advancePaymentUntil) return false;
+            const advanceUntilDate = toDate(c.advancePaymentUntil);
+            return advanceUntilDate && advanceUntilDate > today;
         }).length;
 
         const percentage = (advancePlanClientCount / activeClients.length) * 100;
@@ -213,6 +222,42 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return () => clearTimeout(timer);
 
     }, [isUserAdmin, settings, clients, products, replenishmentQuotes]);
+    
+    // Price Change Automation
+    useEffect(() => {
+        if (!isUserAdmin || pendingPriceChanges.length === 0) return;
+
+        const applyOverduePriceChanges = async () => {
+            const now = firebase.firestore.Timestamp.now();
+            const overdueChanges = pendingPriceChanges.filter(c => 
+                c.status === 'pending' && c.effectiveDate && c.effectiveDate <= now
+            );
+
+            if (overdueChanges.length === 0) return;
+            
+            console.log(`Applying ${overdueChanges.length} overdue price change(s)...`);
+
+            for (const change of overdueChanges) {
+                try {
+                    const batch = db.batch();
+                    const settingsRef = db.collection('settings').doc('main');
+                    batch.set(settingsRef, { pricing: change.newPricing }, { merge: true });
+
+                    const changeRef = db.collection('pendingPriceChanges').doc(change.id);
+                    batch.update(changeRef, { status: 'applied' });
+                    
+                    await batch.commit();
+                    console.log(`Price change ${change.id} applied successfully.`);
+                } catch (error) {
+                    console.error(`Failed to apply price change ${change.id}:`, error);
+                }
+            }
+        };
+
+        const timer = setTimeout(applyOverduePriceChanges, 3000); // Small delay to ensure all data is loaded
+        return () => clearTimeout(timer);
+
+    }, [isUserAdmin, pendingPriceChanges]);
 
     useEffect(() => {
         if (!isUserAdmin && !isUserTechnician) return;
@@ -269,26 +314,21 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setStockProducts(data);
             setLoadingState('stockProducts', false);
         });
+         const unsubPendingChanges = db.collection('pendingPriceChanges').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
+            setPendingPriceChanges(data);
+            setLoadingState('pendingPriceChanges', false);
+        });
+        const unsubEvents = db.collection('poolEvents').orderBy('eventDate', 'asc').onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
+            setPoolEvents(data);
+            setLoadingState('poolEvents', false);
+        });
 
 
-        return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); };
+        return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); unsubEvents(); };
     }, [isUserAdmin, isUserTechnician]);
     
-    // Unscheduled Clients Logic
-    useEffect(() => {
-        if (!isUserAdmin) return;
-        
-        const scheduledClientIds = new Set();
-        Object.keys(routes).forEach(dayKey => {
-            const routeDay = routes[dayKey] as RouteDay | undefined;
-            routeDay?.clients.forEach(client => scheduledClientIds.add(client.id));
-        });
-        
-        const unscheduled = clients.filter(client => !scheduledClientIds.has(client.id));
-        setUnscheduledClients(unscheduled);
-
-    }, [clients, routes, isUserAdmin]);
-
     // Products and Settings listeners (publicly available)
     useEffect(() => {
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
@@ -339,7 +379,13 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setLoadingState('advancePaymentRequests', false);
         });
 
-        return () => { unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); };
+        const unsubEvents = db.collection('poolEvents').where('clientId', '==', user.uid).orderBy('eventDate', 'desc').onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
+            setPoolEvents(data);
+            setLoadingState('poolEvents', false);
+        });
+
+        return () => { unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); };
     }, [user, userData]);
 
     const createInitialAdmin = async (name: string, email: string, pass: string) => {
@@ -485,10 +531,17 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         nextDueDate.setMonth(nextDueDate.getMonth() + months);
 
         const clientRef = db.collection('clients').doc(client.id);
-        const clientUpdate = {
+        const clientUpdate: { [key: string]: any } = {
             'payment.dueDate': nextDueDate.toISOString(),
             'payment.status': 'Pago'
         };
+
+        // This is a regular payment, so if there was an advance plan, it's now over.
+        // We clear the field to correctly reflect the client's status.
+        if (client.advancePaymentUntil) {
+            clientUpdate.advancePaymentUntil = firebase.firestore.FieldValue.delete();
+        }
+
         batch.update(clientRef, clientUpdate);
 
         await batch.commit();
@@ -573,6 +626,21 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const updateOrderStatus = (orderId: string, status: OrderStatus) => db.collection('orders').doc(orderId).update({ status });
     const updateSettings = (newSettings: Partial<Settings>) => db.collection('settings').doc('main').set(newSettings, { merge: true });
     
+    const schedulePriceChange = async (newPricing: PricingSettings, affectedClients: AffectedClientPreview[]) => {
+        const effectiveDate = new Date();
+        effectiveDate.setDate(effectiveDate.getDate() + 30);
+
+        const newChange: Omit<PendingPriceChange, 'id'> = {
+            effectiveDate: firebase.firestore.Timestamp.fromDate(effectiveDate),
+            newPricing,
+            affectedClients,
+            status: 'pending',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await db.collection('pendingPriceChanges').add(newChange);
+    };
+
     const createBudgetQuote = (budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => {
         const budget: Omit<BudgetQuote, 'id'> = {
             ...budgetData,
@@ -639,7 +707,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         nextDueDate.setMonth(nextDueDate.getMonth() + request.months);
 
         const clientRef = db.collection('clients').doc(client.id);
-        batch.update(clientRef, { 'payment.dueDate': nextDueDate.toISOString(), 'payment.status': 'Pago' });
+        batch.update(clientRef, {
+            'payment.dueDate': nextDueDate.toISOString(),
+            'payment.status': 'Pago',
+            'advancePaymentUntil': firebase.firestore.Timestamp.fromDate(nextDueDate)
+        });
 
         const requestRef = db.collection('advancePaymentRequests').doc(requestId);
         batch.update(requestRef, { status: 'approved', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -741,16 +813,31 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         }
     };
 
+    const createPoolEvent = (eventData: Omit<PoolEvent, 'id' | 'status' | 'createdAt'>) => {
+        const event: Omit<PoolEvent, 'id'> = {
+            ...eventData,
+            status: 'notified',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        return db.collection('poolEvents').add(event);
+    };
+
+    const acknowledgePoolEvent = (eventId: string) => {
+        return db.collection('poolEvents').doc(eventId).update({ status: 'acknowledged' });
+    };
+
 
     return {
-        clients, users, budgetQuotes, routes, unscheduledClients, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, loading,
+        clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, loading,
         setupCheck, createInitialAdmin, createTechnician,
         isAdvancePlanGloballyAvailable, advancePlanUsage,
         approveBudgetQuote, rejectBudgetQuote, updateClient, deleteClient, markAsPaid, updateClientStock,
         scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, saveBank, deleteBank,
-        updateOrderStatus, updateSettings, createBudgetQuote, createOrder, getClientData,
+        updateOrderStatus, updateSettings, schedulePriceChange, createBudgetQuote, createOrder, getClientData,
         updateReplenishmentQuoteStatus, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
         addVisitRecord,
         resetReportsData,
+        createPoolEvent,
+        acknowledgePoolEvent,
     };
 };

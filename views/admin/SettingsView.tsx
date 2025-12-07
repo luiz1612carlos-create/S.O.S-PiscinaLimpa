@@ -1,12 +1,14 @@
 
 
+
+
 import React, { useState, useEffect } from 'react';
-import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData } from '../../types';
+import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData, AffectedClientPreview, PendingPriceChange } from '../../types';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
-import { TrashIcon, EditIcon, PlusIcon } from '../../constants';
+import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon } from '../../constants';
 import { Modal } from '../../components/Modal';
 
 interface SettingsViewProps {
@@ -14,8 +16,16 @@ interface SettingsViewProps {
     authContext: AuthContextType;
 }
 
+const toDate = (timestamp: any): Date | null => {
+    if (!timestamp) return null;
+    if (typeof timestamp.toDate === 'function') return timestamp.toDate();
+    if (typeof timestamp === 'string') return new Date(timestamp);
+    if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
+    return null;
+};
+
 const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) => {
-    const { settings, loading, updateSettings, showNotification, advancePlanUsage, clients } = appContext;
+    const { settings, loading, updateSettings, showNotification, advancePlanUsage, clients, pendingPriceChanges, schedulePriceChange } = appContext;
     const { changePassword } = authContext;
     const [localSettings, setLocalSettings] = useState<Settings | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -24,13 +34,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isSavingPassword, setIsSavingPassword] = useState(false);
 
+    // State for price change confirmation modal
+    const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState(false);
+    const [affectedClientsPreview, setAffectedClientsPreview] = useState<AffectedClientPreview[]>([]);
+    const [effectiveDate, setEffectiveDate] = useState<Date | null>(null);
+    const [viewAffectedClientsModalOpen, setViewAffectedClientsModalOpen] = useState(false);
+
+    const pendingChange = pendingPriceChanges.find(c => c.status === 'pending');
+
     useEffect(() => {
         if (settings) {
             setLocalSettings(JSON.parse(JSON.stringify(settings)));
         }
     }, [settings]);
 
-    if (loading.settings || !localSettings) {
+    if (loading.settings || loading.pendingPriceChanges || !localSettings) {
         return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
     }
 
@@ -136,12 +154,57 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
 
 
     const handleSave = async () => {
+        if (!settings) return;
         setIsSaving(true);
         try {
-            await updateSettings(localSettings);
-            showNotification('Configurações salvas com sucesso!', 'success');
+            const hasPriceChanged = JSON.stringify(localSettings.pricing) !== JSON.stringify(settings.pricing);
+
+            // Save all non-pricing settings immediately
+            const { pricing, ...otherSettings } = localSettings;
+            await updateSettings(otherSettings);
+
+            if (hasPriceChanged) {
+                if (pendingChange) {
+                    showNotification('Já existe uma alteração de preço agendada. Aguarde a aplicação para agendar uma nova.', 'error');
+                    setLocalSettings(prev => ({ ...prev!, pricing: settings.pricing })); // Revert local changes
+                    return;
+                }
+
+                // Calculate who is affected and show modal
+                const thirtyDaysFromNow = new Date();
+                thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+                const affected = clients.filter(c => {
+                    if (c.clientStatus !== 'Ativo') return false;
+                    if (c.plan === 'Simples') return true;
+                    if (c.plan === 'VIP') {
+                        const dueDate = new Date(c.payment.dueDate);
+                        return dueDate <= thirtyDaysFromNow;
+                    }
+                    return false;
+                }).map(c => ({ id: c.id, name: c.name }));
+                
+                setAffectedClientsPreview(affected);
+                setEffectiveDate(thirtyDaysFromNow);
+                setIsPriceChangeModalOpen(true);
+            } else {
+                showNotification('Configurações salvas com sucesso!', 'success');
+            }
         } catch (error: any) {
             showNotification(error.message || 'Erro ao salvar configurações.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleConfirmPriceChange = async () => {
+        setIsSaving(true);
+        try {
+            await schedulePriceChange(localSettings.pricing, affectedClientsPreview);
+            showNotification('Alteração de preço agendada com sucesso!', 'success');
+            setIsPriceChangeModalOpen(false);
+        } catch (error: any) {
+             showNotification(error.message || 'Erro ao agendar alteração de preço.', 'error');
         } finally {
             setIsSaving(false);
         }
@@ -178,6 +241,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 <h2 className="text-3xl font-bold">Configurações Gerais</h2>
                 <Button onClick={handleSave} isLoading={isSaving}>Salvar Alterações</Button>
             </div>
+
+            {pendingChange && (
+                <div className="p-4 mb-6 bg-blue-100 dark:bg-blue-900/30 border-l-4 border-blue-500 text-blue-800 dark:text-blue-200 rounded-md">
+                    <div className="flex items-center">
+                        <CalendarDaysIcon className="w-6 h-6 mr-3" />
+                        <div>
+                            <p className="font-bold">Alteração de Preço Agendada</p>
+                            <p>Novos preços entrarão em vigor em: <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong>.</p>
+                            <button onClick={() => setViewAffectedClientsModalOpen(true)} className="text-sm text-blue-600 dark:text-blue-300 hover:underline">
+                                Ver {pendingChange.affectedClients.length} cliente(s) afetado(s)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="space-y-8">
                 {/* Company Info */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
@@ -232,28 +311,35 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 </div>
 
                 {/* Pricing */}
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-                    <h3 className="text-xl font-semibold mb-4">Precificação</h3>
-                    <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
-                        <strong>Atenção:</strong> Alterar estes valores afetará o preço da mensalidade de <strong>todos</strong> os clientes existentes.
-                    </p>
-                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                         <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                         <Input label="Taxa Água de Poço" name="wellWaterFee" type="number" value={localSettings.pricing.wellWaterFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                         <Input label="Taxa de Produtos" name="productsFee" type="number" value={localSettings.pricing.productsFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                         <Input label="Taxa Piscina de Festa" name="partyPoolFee" type="number" value={localSettings.pricing.partyPoolFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                    </div>
-                    <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
-                    {localSettings.pricing.volumeTiers.map((tier, index) => (
-                        <div key={index} className="flex items-center gap-2 mb-2">
-                           <span>Até</span>
-                           <Input label="" type="number" value={tier.upTo} onChange={(e) => handleTierChange(index, 'upTo', +e.target.value)} containerClassName="mb-0" />
-                           <span>litros, custa R$</span>
-                           <Input label="" type="number" value={tier.price} onChange={(e) => handleTierChange(index, 'price', +e.target.value)} containerClassName="mb-0" />
-                           <Button variant="danger" size="sm" onClick={() => removeTier(index)}><TrashIcon className="w-4 h-4"/></Button>
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow relative">
+                     {pendingChange && (
+                        <div className="absolute inset-0 bg-gray-400/30 dark:bg-gray-900/50 flex items-center justify-center z-10 rounded-lg">
+                            <span className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-md font-semibold shadow-lg">Bloqueado até a aplicação da mudança agendada.</span>
                         </div>
-                    ))}
-                    <Button variant="secondary" size="sm" onClick={addTier}>Adicionar Faixa</Button>
+                    )}
+                    <fieldset disabled={!!pendingChange}>
+                        <h3 className="text-xl font-semibold mb-4">Precificação</h3>
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
+                            <strong>Atenção:</strong> Alterar estes valores agendará uma mudança de preço para os clientes aplicáveis, que entrará em vigor em 30 dias.
+                        </p>
+                        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                            <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                            <Input label="Taxa Água de Poço" name="wellWaterFee" type="number" value={localSettings.pricing.wellWaterFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                            <Input label="Taxa de Produtos" name="productsFee" type="number" value={localSettings.pricing.productsFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                            <Input label="Taxa Piscina de Festa" name="partyPoolFee" type="number" value={localSettings.pricing.partyPoolFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                        </div>
+                        <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
+                        {localSettings.pricing.volumeTiers.map((tier, index) => (
+                            <div key={index} className="flex items-center gap-2 mb-2">
+                            <span>Até</span>
+                            <Input label="" type="number" value={tier.upTo} onChange={(e) => handleTierChange(index, 'upTo', +e.target.value)} containerClassName="mb-0" />
+                            <span>litros, custa R$</span>
+                            <Input label="" type="number" value={tier.price} onChange={(e) => handleTierChange(index, 'price', +e.target.value)} containerClassName="mb-0" />
+                            <Button variant="danger" size="sm" onClick={() => removeTier(index)}><TrashIcon className="w-4 h-4"/></Button>
+                            </div>
+                        ))}
+                        <Button variant="secondary" size="sm" onClick={addTier}>Adicionar Faixa</Button>
+                    </fieldset>
                 </div>
 
                 {/* Plans */}
@@ -308,7 +394,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                     <p>{advancePlanUsage.count} de {activeClientsCount} clientes ativos aderiram ({advancePlanUsage.percentage.toFixed(2)}%).</p>
                                     {advancePlanUsage.percentage >= 10 && (
                                         <p className="font-bold text-yellow-600 dark:text-yellow-400 mt-2">
-                                            O plano está desativado automaticamente para novos clientes pois o limite de 10% foi atingido.
+                                            O limite de adesão foi atingido. O plano de adiantamento está indisponível para novas solicitações.
                                         </p>
                                     )}
                                 </div>
@@ -344,6 +430,55 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     </form>
                 </div>
             </div>
+
+            {isPriceChangeModalOpen && (
+                <Modal
+                    isOpen={isPriceChangeModalOpen}
+                    onClose={() => setIsPriceChangeModalOpen(false)}
+                    title="Confirmar Alteração de Preço"
+                    size="lg"
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setIsPriceChangeModalOpen(false)}>Cancelar</Button>
+                            <Button onClick={handleConfirmPriceChange} isLoading={isSaving}>Agendar Alteração</Button>
+                        </>
+                    }
+                >
+                    <p>Você está prestes a agendar uma alteração nos preços.</p>
+                    <p className="font-semibold my-2">Os novos valores entrarão em vigor em <strong>{effectiveDate?.toLocaleDateString('pt-BR')}</strong>.</p>
+                    <p>A alteração afetará os seguintes <strong>{affectedClientsPreview.length}</strong> clientes:</p>
+                    <div className="mt-2 p-2 border rounded-md max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-700">
+                        {affectedClientsPreview.length > 0 ? (
+                            <ul className="list-disc list-inside">
+                                {affectedClientsPreview.map(c => <li key={c.id}>{c.name}</li>)}
+                            </ul>
+                        ) : (
+                            <p>Nenhum cliente será afetado por esta mudança no momento.</p>
+                        )}
+                    </div>
+                    <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+                        Clientes do Plano Simples e clientes VIP com mensalidades a vencer nos próximos 30 dias são afetados. Clientes VIP com planos de fidelidade ativos e com pagamentos em dia não serão afetados até o fim de seus respectivos planos.
+                    </p>
+                </Modal>
+            )}
+
+            {pendingChange && viewAffectedClientsModalOpen && (
+                <Modal
+                    isOpen={viewAffectedClientsModalOpen}
+                    onClose={() => setViewAffectedClientsModalOpen(false)}
+                    title="Clientes Afetados pela Mudança Agendada"
+                    size="lg"
+                    footer={<Button onClick={() => setViewAffectedClientsModalOpen(false)}>Fechar</Button>}
+                >
+                    <p>A alteração de preço agendada para <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong> afetará os seguintes clientes:</p>
+                    <div className="mt-2 p-2 border rounded-md max-h-60 overflow-y-auto bg-gray-50 dark:bg-gray-700">
+                        <ul className="list-disc list-inside">
+                            {pendingChange.affectedClients.map(c => <li key={c.id}>{c.name}</li>)}
+                        </ul>
+                    </div>
+                </Modal>
+            )}
+
         </div>
     );
 };

@@ -1,8 +1,9 @@
 
 
+
 import React, { useState } from 'react';
 import { AuthContextType, AppContextType, AdminView } from '../../types';
-import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon, ArchiveBoxIcon } from '../../constants';
+import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon, ArchiveBoxIcon, SparklesIcon } from '../../constants';
 import { useTheme } from '../../hooks/useTheme';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import ClientsView from './ClientsView';
@@ -13,6 +14,7 @@ import SettingsView from './SettingsView';
 import ReportsView from './ReportsView';
 import AdvancePaymentsView from './AdvancePaymentsView';
 import StockProductsView from './StockProductsView';
+import EventsView from './EventsView';
 
 interface AdminLayoutProps {
     authContext: AuthContextType;
@@ -30,6 +32,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
         { id: 'reports', label: 'Relatórios', icon: ChartBarIcon },
         { id: 'approvals', label: 'Novos Orçamentos', icon: CheckBadgeIcon, count: appContext.budgetQuotes.filter(b => b.status === 'pending').length },
         { id: 'advances', label: 'Adiantamentos', icon: CalendarDaysIcon, count: appContext.advancePaymentRequests.filter(r => r.status === 'pending').length },
+        { id: 'events', label: 'Eventos', icon: SparklesIcon, count: appContext.poolEvents.filter(e => e.status === 'notified').length },
         { id: 'clients', label: 'Clientes', icon: UsersIcon },
         { id: 'routes', label: 'Rotas', icon: RouteIcon },
         { id: 'store', label: 'Loja', icon: StoreIcon },
@@ -47,6 +50,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
             case 'stock': return <StockProductsView appContext={appContext} />;
             case 'settings': return <SettingsView appContext={appContext} authContext={authContext} />;
             case 'advances': return <AdvancePaymentsView appContext={appContext} />;
+            case 'events': return <EventsView appContext={appContext} />;
             default: return <ReportsView appContext={appContext} />;
         }
     };

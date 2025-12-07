@@ -189,9 +189,9 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">1. Dimensões da Piscina (metros)</legend>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
-                        <Input label="Largura" name="width" type="text" value={formData.width} onChange={handleInputChange} required placeholder="ex: 4 ou 4,5" />
-                        <Input label="Comprimento" name="length" type="text" value={formData.length} onChange={handleInputChange} required placeholder="ex: 8" />
-                        <Input label="Profundidade Média" name="depth" type="text" value={formData.depth} onChange={handleInputChange} required placeholder="ex: 1.4 ou 1,4" />
+                        <Input label="Largura" name="width" type="text" inputMode="decimal" value={formData.width} onChange={handleInputChange} required placeholder="ex: 4 ou 4,5" />
+                        <Input label="Comprimento" name="length" type="text" inputMode="decimal" value={formData.length} onChange={handleInputChange} required placeholder="ex: 8" />
+                        <Input label="Profundidade Média" name="depth" type="text" inputMode="decimal" value={formData.depth} onChange={handleInputChange} required placeholder="ex: 1.4 ou 1,4" />
                     </div>
                      {volume > 0 && <p className="text-center mt-2 text-lg font-medium text-secondary-600 dark:text-secondary-400">Volume: {volume.toLocaleString('pt-BR')} litros</p>}
                 </fieldset>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest } from '../../types';
+import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Button } from '../../components/Button';
@@ -23,7 +23,7 @@ const toDate = (timestamp: any): Date | null => {
 
 const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, appContext }) => {
     const { user, changePassword, showNotification } = authContext;
-    const { getClientData, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks } = appContext;
+    const { getClientData, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent } = appContext;
     const [clientData, setClientData] = useState<Client | null>(null);
     const [loading, setLoading] = useState(true);
     
@@ -180,6 +180,13 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                         </Button>
                     </div>
                 ) : null}
+                
+                <EventSchedulerCard
+                    client={clientData}
+                    poolEvents={poolEvents}
+                    createPoolEvent={createPoolEvent}
+                    showNotification={showNotification}
+                />
 
                 {/* Visit History */}
                 <Card>
@@ -496,5 +503,99 @@ const ReplenishmentCard = ({ quote, client, updateStatus, createOrder, showNotif
         </Card>
     )
 }
+
+interface EventSchedulerCardProps {
+    client: Client;
+    poolEvents: PoolEvent[];
+    createPoolEvent: AppContextType['createPoolEvent'];
+    showNotification: AppContextType['showNotification'];
+}
+
+const EventSchedulerCard: React.FC<EventSchedulerCardProps> = ({ client, poolEvents, createPoolEvent, showNotification }) => {
+    const [eventDate, setEventDate] = useState('');
+    const [notes, setNotes] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const upcomingEvents = useMemo(() => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        return poolEvents.filter(e => {
+            const eventD = toDate(e.eventDate);
+            return eventD && eventD >= now;
+        }).sort((a, b) => (toDate(a.eventDate)?.getTime() || 0) - (toDate(b.eventDate)?.getTime() || 0));
+    }, [poolEvents]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!eventDate) {
+            showNotification('Por favor, selecione a data do evento.', 'error');
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await createPoolEvent({
+                clientId: client.uid!,
+                clientName: client.name,
+                eventDate: new Date(eventDate + 'T12:00:00'), // Use midday to avoid timezone issues
+                notes,
+            });
+            showNotification('Evento notificado com sucesso!', 'success');
+            setEventDate('');
+            setNotes('');
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao notificar evento.', 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader><h3 className="text-xl font-semibold">Agendar Evento na Piscina</h3></CardHeader>
+            <CardContent>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Tem uma festa ou evento planejado? Nos avise com antecedência para prepararmos sua piscina!
+                </p>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <Input
+                        label="Data do Evento"
+                        type="date"
+                        value={eventDate}
+                        onChange={e => setEventDate(e.target.value)}
+                        min={today}
+                        required
+                    />
+                    <textarea
+                        value={notes}
+                        onChange={e => setNotes(e.target.value)}
+                        placeholder="Observações (opcional): ex: número de convidados, horário..."
+                        rows={3}
+                        className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <Button type="submit" isLoading={isSubmitting} className="w-full">Notificar Empresa</Button>
+                </form>
+
+                {upcomingEvents.length > 0 && (
+                    <div className="mt-6">
+                        <h4 className="font-semibold mb-2">Seus Próximos Eventos</h4>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                            {upcomingEvents.map(event => (
+                                <div key={event.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <p className="font-semibold">{toDate(event.eventDate)?.toLocaleDateString('pt-BR')}</p>
+                                    <p className="text-sm text-gray-500">{event.notes}</p>
+                                    <p className={`text-xs font-bold uppercase ${event.status === 'acknowledged' ? 'text-green-500' : 'text-yellow-500'}`}>
+                                        Status: {event.status === 'acknowledged' ? 'Confirmado pela Equipe' : 'Aguardando Confirmação'}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+};
 
 export default ClientDashboardView;

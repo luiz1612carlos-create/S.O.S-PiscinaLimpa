@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppContextType, Routes, Settings } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
@@ -20,7 +21,7 @@ interface RoutesViewProps {
 const weekDays: (keyof Routes)[] = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
 
 const RoutesView: React.FC<RoutesViewProps> = ({ appContext }) => {
-    const { routes, unscheduledClients, loading, scheduleClient, unscheduleClient, toggleRouteStatus, showNotification, settings } = appContext;
+    const { routes, clients, loading, scheduleClient, unscheduleClient, toggleRouteStatus, showNotification, settings } = appContext;
 
     const [selectedClient, setSelectedClient] = useState('');
     const [selectedDay, setSelectedDay] = useState(weekDays[0]);
@@ -57,6 +58,12 @@ const RoutesView: React.FC<RoutesViewProps> = ({ appContext }) => {
         }
     }
 
+    const availableClientsForScheduling = useMemo(() => {
+        const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
+        const clientsInSelectedDay = routes[selectedDay]?.clients.map(c => c.id) || [];
+        return activeClients.filter(c => !clientsInSelectedDay.includes(c.id));
+    }, [clients, routes, selectedDay]);
+
 
     return (
         <div>
@@ -65,22 +72,18 @@ const RoutesView: React.FC<RoutesViewProps> = ({ appContext }) => {
             <WeatherForecast settings={settings} />
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Unscheduled Clients */}
+                {/* Scheduling Panel */}
                 <Card className="lg:col-span-1">
-                    <CardHeader><h3 className="text-xl font-semibold">Clientes Não Agendados</h3></CardHeader>
-                    <CardContent className="space-y-2 max-h-96 overflow-y-auto">
-                       {loading.clients ? <Spinner /> : unscheduledClients.map(client => (
-                            <div key={client.id} className="p-2 bg-gray-100 dark:bg-gray-700 rounded">
-                                {client.name}
-                            </div>
-                        ))}
-                    </CardContent>
-                    <div className="p-4 border-t dark:border-gray-700 space-y-2">
+                    <CardHeader><h3 className="text-xl font-semibold">Adicionar Cliente à Rota</h3></CardHeader>
+                    <CardContent className="space-y-4">
                         <Select
                             label="Cliente"
                             value={selectedClient}
                             onChange={(e) => setSelectedClient(e.target.value)}
-                            options={[{ value: '', label: 'Selecione...' }, ...unscheduledClients.map(c => ({ value: c.id, label: c.name }))]}
+                            options={[
+                                { value: '', label: 'Selecione um cliente...' }, 
+                                ...availableClientsForScheduling.map(c => ({ value: c.id, label: c.name }))
+                            ]}
                         />
                         <Select
                             label="Dia da Semana"
@@ -89,7 +92,7 @@ const RoutesView: React.FC<RoutesViewProps> = ({ appContext }) => {
                             options={weekDays.map(d => ({ value: d, label: String(d) }))}
                         />
                         <Button onClick={handleAddClientToRoute} className="w-full">Agendar Cliente</Button>
-                    </div>
+                    </CardContent>
                 </Card>
 
                 {/* Scheduled Routes */}

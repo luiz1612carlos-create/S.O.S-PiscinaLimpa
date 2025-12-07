@@ -15,6 +15,7 @@ export type BudgetQuoteStatus = 'pending' | 'approved' | 'rejected';
 export type OrderStatus = 'Pendente' | 'Enviado' | 'Entregue';
 export type ReplenishmentQuoteStatus = 'suggested' | 'sent' | 'approved' | 'rejected';
 export type AdvancePaymentRequestStatus = 'pending' | 'approved' | 'rejected';
+export type PoolEventStatus = 'notified' | 'acknowledged';
 
 export interface Address {
     street: string;
@@ -103,6 +104,7 @@ export interface Client {
     createdAt: any; // Firestore Timestamp
     visitHistory?: Visit[];
     lastVisitDuration?: number; // in minutes
+    advancePaymentUntil?: any; // Firestore Timestamp
 }
 
 export interface BudgetQuote {
@@ -195,6 +197,16 @@ export interface AdvancePaymentRequest {
     updatedAt: any; // Firestore Timestamp
 }
 
+export interface PoolEvent {
+    id: string;
+    clientId: string;
+    clientName: string;
+    eventDate: any; // Firestore Timestamp
+    notes: string;
+    status: PoolEventStatus;
+    createdAt: any; // Firestore Timestamp
+}
+
 export interface Settings {
     companyName: string;
     mainTitle: string;
@@ -239,6 +251,23 @@ export interface Settings {
     advancePaymentOptions: AdvancePaymentOption[];
 }
 
+export type PricingSettings = Settings['pricing'];
+
+export interface AffectedClientPreview {
+    id: string;
+    name: string;
+}
+
+export interface PendingPriceChange {
+    id: string;
+    effectiveDate: any; // Firestore Timestamp
+    newPricing: PricingSettings;
+    affectedClients: AffectedClientPreview[];
+    status: 'pending' | 'applied';
+    createdAt: any; // Firestore Timestamp
+}
+
+
 export type NotificationType = 'success' | 'error' | 'info';
 
 export interface AuthContextType {
@@ -259,7 +288,6 @@ export interface AppData {
     users: UserData[];
     budgetQuotes: BudgetQuote[];
     routes: Routes;
-    unscheduledClients: Client[];
     products: Product[];
     stockProducts: StockProduct[];
     orders: Order[];
@@ -267,7 +295,9 @@ export interface AppData {
     transactions: Transaction[];
     replenishmentQuotes: ReplenishmentQuote[];
     advancePaymentRequests: AdvancePaymentRequest[];
+    poolEvents: PoolEvent[];
     settings: Settings | null;
+    pendingPriceChanges: PendingPriceChange[];
     loading: {
         clients: boolean;
         users: boolean;
@@ -281,6 +311,8 @@ export interface AppData {
         transactions: boolean;
         replenishmentQuotes: boolean;
         advancePaymentRequests: boolean;
+        pendingPriceChanges: boolean;
+        poolEvents: boolean;
     };
     setupCheck: 'checking' | 'needed' | 'done';
     isAdvancePlanGloballyAvailable: boolean;
@@ -305,6 +337,7 @@ export interface AppData {
     deleteBank: (bankId: string) => Promise<void>;
     updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
     updateSettings: (newSettings: Partial<Settings>) => Promise<void>;
+    schedulePriceChange: (newPricing: PricingSettings, affectedClients: AffectedClientPreview[]) => Promise<void>;
     createBudgetQuote: (budget: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => Promise<void>;
     createOrder: (order: Omit<Order, 'id' | 'createdAt'>) => Promise<void>;
     getClientData: () => Promise<Client | null>;
@@ -316,6 +349,8 @@ export interface AppData {
     rejectAdvancePaymentRequest: (requestId: string) => Promise<void>;
     addVisitRecord: (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File) => Promise<void>;
     resetReportsData: () => Promise<void>;
+    createPoolEvent: (event: Omit<PoolEvent, 'id' | 'status' | 'createdAt' | 'clientId' | 'clientName'> & { clientId: string, clientName: string }) => Promise<void>;
+    acknowledgePoolEvent: (eventId: string) => Promise<void>;
 }
 
-export type AdminView = 'reports' | 'clients' | 'routes' | 'approvals' | 'store' | 'stock' | 'settings' | 'advances';
+export type AdminView = 'reports' | 'clients' | 'routes' | 'approvals' | 'store' | 'stock' | 'settings' | 'advances' | 'events';

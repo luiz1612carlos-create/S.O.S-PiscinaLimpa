@@ -139,6 +139,13 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         }
     };
     
+    const isAdvancePlanActive = (client: Client): boolean => {
+        if (!client.advancePaymentUntil) return false;
+        const today = new Date();
+        const advanceUntilDate = toDate(client.advancePaymentUntil);
+        return advanceUntilDate && advanceUntilDate > today;
+    };
+
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6">Gerenciamento de Clientes</h2>
@@ -166,7 +173,14 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                     {filteredClients.map(client => (
                         <Card key={client.id} className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300" onClick={() => handleOpenModal(client)}>
                             <CardHeader>
-                                <h3 className="text-lg font-semibold truncate">{client.name}</h3>
+                                <div className="flex justify-between items-start">
+                                    <h3 className="text-lg font-semibold truncate pr-2">{client.name}</h3>
+                                    {isAdvancePlanActive(client) && (
+                                        <span className="flex-shrink-0 text-xs font-bold bg-green-100 text-green-800 px-2 py-1 rounded-full dark:bg-green-900 dark:text-green-200">
+                                            Adiantado
+                                        </span>
+                                    )}
+                                </div>
                                 <p className={`text-sm font-bold ${client.plan === 'VIP' ? 'text-yellow-500' : 'text-blue-500'}`}>
                                     {client.plan} {client.fidelityPlan ? `(${client.fidelityPlan.months} meses)` : ''}
                                 </p>
@@ -354,6 +368,13 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
             }))
         ];
     }, [settings]);
+
+    const isAdvancePlanActive = useMemo(() => {
+        if (!clientData.advancePaymentUntil) return false;
+        const today = new Date();
+        const advanceUntilDate = toDate(clientData.advancePaymentUntil);
+        return advanceUntilDate && advanceUntilDate > today;
+    }, [clientData.advancePaymentUntil]);
     
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Editar Cliente: ${client.name}`} size="xl">
@@ -402,9 +423,9 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold">Detalhes da Piscina e Orçamento</legend>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
-                        <Input label="Largura (m)" name="poolDimensions.width" type="text" value={String(clientData.poolDimensions.width)} onChange={handleChange} />
-                        <Input label="Comprimento (m)" name="poolDimensions.length" type="text" value={String(clientData.poolDimensions.length)} onChange={handleChange} />
-                        <Input label="Profundidade (m)" name="poolDimensions.depth" type="text" value={String(clientData.poolDimensions.depth)} onChange={handleChange} />
+                        <Input label="Largura (m)" name="poolDimensions.width" type="text" inputMode="decimal" value={String(clientData.poolDimensions.width)} onChange={handleChange} />
+                        <Input label="Comprimento (m)" name="poolDimensions.length" type="text" inputMode="decimal" value={String(clientData.poolDimensions.length)} onChange={handleChange} />
+                        <Input label="Profundidade (m)" name="poolDimensions.depth" type="text" inputMode="decimal" value={String(clientData.poolDimensions.depth)} onChange={handleChange} />
                     </div>
                     {volume > 0 && <p className="text-center mt-2 text-lg font-medium text-secondary-600 dark:text-secondary-400">Volume: {volume.toLocaleString('pt-BR')} litros</p>}
                     <div className="flex gap-4 mt-4">
@@ -457,7 +478,7 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                  {/* Payment Info */}
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold">Pagamento</legend>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4">
                         <Select
                             label="Banco de Recebimento"
                             name="bankId"
@@ -474,11 +495,20 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                             error={errors.pixKey}
                         />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 items-start">
+                        <div className="space-y-4">
+                            <div className="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-md">
+                                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Plano de Adiantamento</p>
+                                <p>Status: <span className={`font-bold ${isAdvancePlanActive ? 'text-green-500' : 'text-gray-500'}`}>{isAdvancePlanActive ? 'Ativo' : 'Inativo'}</span></p>
+                            </div>
+                            <div className="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-md">
+                                <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Mensalidade Atual</p>
+                                <p>Status: <span className="font-bold">{clientData.payment.status}</span></p>
+                                <p>Valor (calculado): <span className="font-bold text-lg text-primary-600">R$ {calculatedFee.toFixed(2)}</span></p>
+                            </div>
+                        </div>
                         <div className="space-y-2">
-                             <p>Status: <span className="font-bold">{clientData.payment.status}</span></p>
-                             <p>Mensalidade (calculada): <span className="font-bold text-lg text-primary-600">R$ {calculatedFee.toFixed(2)}</span></p>
-                            <Input
+                             <Input
                                 label="Próximo Vencimento"
                                 name="payment.dueDate"
                                 type="date"
@@ -487,11 +517,11 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                                 containerClassName="mb-0"
                                 error={errors.dueDate}
                             />
-                        </div>
-                        <div className="flex justify-end">
-                            <Button onClick={handleMarkPaidClick} isLoading={isSaving} disabled={clientData.payment.status === 'Pago'}>
-                                Marcar como Pago
-                            </Button>
+                            <div className="flex justify-end pt-5">
+                                <Button onClick={handleMarkPaidClick} isLoading={isSaving} disabled={clientData.payment.status === 'Pago'}>
+                                    Marcar como Pago
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </fieldset>
