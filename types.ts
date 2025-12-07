@@ -207,6 +207,13 @@ export interface PoolEvent {
     createdAt: any; // Firestore Timestamp
 }
 
+export interface RecessPeriod {
+    id: string;
+    name: string;
+    startDate: any; // Firestore Timestamp
+    endDate: any;   // Firestore Timestamp
+}
+
 export interface Settings {
     companyName: string;
     mainTitle: string;
@@ -249,6 +256,7 @@ export interface Settings {
         replenishmentStockThreshold: number;
     };
     advancePaymentOptions: AdvancePaymentOption[];
+    recessPeriods?: RecessPeriod[];
 }
 
 export type PricingSettings = Settings['pricing'];
@@ -351,6 +359,8 @@ export interface AppData {
     resetReportsData: () => Promise<void>;
     createPoolEvent: (event: Omit<PoolEvent, 'id' | 'status' | 'createdAt' | 'clientId' | 'clientName'> & { clientId: string, clientName: string }) => Promise<void>;
     acknowledgePoolEvent: (eventId: string) => Promise<void>;
+    saveRecessPeriod: (recess: Omit<RecessPeriod, 'id'> | RecessPeriod) => Promise<void>;
+    deleteRecessPeriod: (recessId: string) => Promise<void>;
 }
 
 export type AdminView = 'reports' | 'clients' | 'routes' | 'approvals' | 'store' | 'stock' | 'settings' | 'advances' | 'events';

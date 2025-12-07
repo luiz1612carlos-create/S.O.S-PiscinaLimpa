@@ -8,7 +8,7 @@ import {
     Client, BudgetQuote, Routes, Product, Order, Settings, ClientProduct, UserData,
     OrderStatus, AppData, ReplenishmentQuote, ReplenishmentQuoteStatus, Bank, Transaction,
     AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan, Visit, StockProduct,
-    PendingPriceChange, PricingSettings, AffectedClientPreview, PoolEvent
+    PendingPriceChange, PricingSettings, AffectedClientPreview, PoolEvent, RecessPeriod
 } from '../types';
 import { calculateClientMonthlyFee } from '../utils/calculations';
 
@@ -83,7 +83,8 @@ const defaultSettings: Settings = {
     advancePaymentOptions: [
         { months: 3, discountPercent: 5 },
         { months: 6, discountPercent: 10 },
-    ]
+    ],
+    recessPeriods: [],
 };
 
 const toDate = (timestamp: any): Date | null => {
@@ -361,27 +362,43 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     useEffect(() => {
         if (userData?.role !== 'client' || !user) return;
 
-        const unsubOrders = db.collection('orders').where('clientId', '==', user.uid).orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+        const unsubOrders = db.collection('orders').where('clientId', '==', user.uid).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+            data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
             setOrders(data);
+            setLoadingState('orders', false);
+        }, (error: Error) => {
+            console.error("Error fetching client orders:", error);
             setLoadingState('orders', false);
         });
 
-        const unsubQuotes = db.collection('replenishmentQuotes').where('clientId', '==', user.uid).orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+        const unsubQuotes = db.collection('replenishmentQuotes').where('clientId', '==', user.uid).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote));
+            data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
             setReplenishmentQuotes(data);
+            setLoadingState('replenishmentQuotes', false);
+        }, (error: Error) => {
+            console.error("Error fetching client replenishment quotes:", error);
             setLoadingState('replenishmentQuotes', false);
         });
         
-        const unsubAdvanceRequests = db.collection('advancePaymentRequests').where('clientId', '==', user.uid).orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+        const unsubAdvanceRequests = db.collection('advancePaymentRequests').where('clientId', '==', user.uid).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest));
+            data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
             setAdvancePaymentRequests(data);
+            setLoadingState('advancePaymentRequests', false);
+        }, (error: Error) => {
+            console.error("Error fetching client advance payment requests:", error);
             setLoadingState('advancePaymentRequests', false);
         });
 
-        const unsubEvents = db.collection('poolEvents').where('clientId', '==', user.uid).orderBy('eventDate', 'desc').onSnapshot(snapshot => {
+        const unsubEvents = db.collection('poolEvents').where('clientId', '==', user.uid).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
+            data.sort((a, b) => (toDate(b.eventDate)?.getTime() || 0) - (toDate(a.eventDate)?.getTime() || 0));
             setPoolEvents(data);
+            setLoadingState('poolEvents', false);
+        }, (error: Error) => {
+            console.error("Error fetching client pool events:", error);
             setLoadingState('poolEvents', false);
         });
 
@@ -826,6 +843,34 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return db.collection('poolEvents').doc(eventId).update({ status: 'acknowledged' });
     };
 
+    const saveRecessPeriod = async (recess: Omit<RecessPeriod, 'id'> | RecessPeriod) => {
+        const settingsDoc = await db.collection('settings').doc('main').get();
+        const currentSettings = settingsDoc.data() as Settings;
+        const currentRecesses = currentSettings.recessPeriods || [];
+
+        if ('id' in recess) { // Update existing
+            const index = currentRecesses.findIndex(r => r.id === recess.id);
+            if (index > -1) {
+                currentRecesses[index] = recess;
+            }
+        } else { // Add new
+            const newRecess = { ...recess, id: db.collection('settings').doc().id };
+            currentRecesses.push(newRecess);
+        }
+
+        return db.collection('settings').doc('main').update({ recessPeriods: currentRecesses });
+    };
+
+    const deleteRecessPeriod = async (recessId: string) => {
+        const settingsDoc = await db.collection('settings').doc('main').get();
+        const currentSettings = settingsDoc.data() as Settings;
+        const currentRecesses = currentSettings.recessPeriods || [];
+        
+        const updatedRecesses = currentRecesses.filter(r => r.id !== recessId);
+
+        return db.collection('settings').doc('main').update({ recessPeriods: updatedRecesses });
+    };
+
 
     return {
         clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, loading,
@@ -839,5 +884,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         resetReportsData,
         createPoolEvent,
         acknowledgePoolEvent,
+        saveRecessPeriod,
+        deleteRecessPeriod,
     };
 };

@@ -2,8 +2,10 @@
 
 
 
+
+
 import React, { useState, useEffect } from 'react';
-import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData, AffectedClientPreview, PendingPriceChange } from '../../types';
+import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData, AffectedClientPreview, PendingPriceChange, RecessPeriod } from '../../types';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
@@ -293,6 +295,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 {/* Bank Management */}
                 <BankManager appContext={appContext} />
 
+                {/* Recess Management */}
+                <RecessManager appContext={appContext} />
+
                 {/* User Management */}
                 <UserManager appContext={appContext} />
 
@@ -479,6 +484,133 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 </Modal>
             )}
 
+        </div>
+    );
+};
+
+const RecessManager = ({ appContext }: { appContext: AppContextType }) => {
+    const { settings, saveRecessPeriod, deleteRecessPeriod, showNotification } = appContext;
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentRecess, setCurrentRecess] = useState<Omit<RecessPeriod, 'id'> | RecessPeriod | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const handleOpenModal = (recess: RecessPeriod | null = null) => {
+        if (recess) {
+            setCurrentRecess({
+                ...recess,
+                startDate: toDate(recess.startDate)?.toISOString().split('T')[0],
+                endDate: toDate(recess.endDate)?.toISOString().split('T')[0]
+            });
+        } else {
+            setCurrentRecess({ name: '', startDate: '', endDate: '' });
+        }
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setCurrentRecess(null);
+    };
+
+    const handleSave = async () => {
+        if (!currentRecess || !currentRecess.name || !currentRecess.startDate || !currentRecess.endDate) {
+            showNotification('Todos os campos são obrigatórios.', 'error');
+            return;
+        }
+        if (new Date(currentRecess.startDate) > new Date(currentRecess.endDate)) {
+            showNotification('A data de início não pode ser posterior à data de término.', 'error');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const recessToSave = {
+                ...currentRecess,
+                startDate: new Date(currentRecess.startDate + 'T00:00:00'),
+                endDate: new Date(currentRecess.endDate + 'T23:59:59'),
+            };
+            await saveRecessPeriod(recessToSave);
+            showNotification('Período de recesso salvo com sucesso!', 'success');
+            handleCloseModal();
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao salvar período de recesso.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async (recessId: string) => {
+        if (window.confirm('Tem certeza que deseja excluir este período de recesso?')) {
+            try {
+                await deleteRecessPeriod(recessId);
+                showNotification('Recesso excluído com sucesso.', 'success');
+            } catch (error: any) {
+                showNotification(error.message || 'Erro ao excluir recesso.', 'error');
+            }
+        }
+    };
+    
+    return (
+        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold">Gestão de Recessos</h3>
+                <Button size="sm" onClick={() => handleOpenModal()}>
+                    <PlusIcon className="w-4 h-4 mr-1" /> Adicionar Recesso
+                </Button>
+            </div>
+            <div className="space-y-2">
+                {settings?.recessPeriods && settings.recessPeriods.length > 0 ? settings.recessPeriods.map(recess => (
+                    <div key={recess.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <div>
+                            <span className="font-medium">{recess.name}</span>
+                            <p className="text-xs text-gray-500">
+                                {toDate(recess.startDate)?.toLocaleDateString('pt-BR')} - {toDate(recess.endDate)?.toLocaleDateString('pt-BR')}
+                            </p>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="danger" onClick={() => handleDelete(recess.id)}><TrashIcon className="w-4 h-4" /></Button>
+                        </div>
+                    </div>
+                )) : <p className="text-sm text-gray-500">Nenhum período de recesso cadastrado.</p>}
+            </div>
+             {isModalOpen && currentRecess && (
+                <Modal 
+                    isOpen={isModalOpen} 
+                    onClose={handleCloseModal} 
+                    title={'id' in currentRecess ? 'Editar Recesso' : 'Novo Recesso'}
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
+                            <Button onClick={handleSave} isLoading={isSaving}>Salvar</Button>
+                        </>
+                    }
+                >
+                    <Input 
+                        label="Nome do Recesso" 
+                        value={currentRecess.name} 
+                        onChange={(e) => setCurrentRecess(prev => ({...prev!, name: e.target.value}))}
+                        placeholder="Ex: Recesso de Fim de Ano"
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input 
+                            label="Data de Início" 
+                            type="date"
+                            min={today}
+                            value={currentRecess.startDate || ''} 
+                            onChange={(e) => setCurrentRecess(prev => ({...prev!, startDate: e.target.value}))}
+                        />
+                        <Input 
+                            label="Data de Término" 
+                            type="date"
+                            min={currentRecess.startDate || today}
+                            value={currentRecess.endDate || ''} 
+                            onChange={(e) => setCurrentRecess(prev => ({...prev!, endDate: e.target.value}))}
+                        />
+                    </div>
+                </Modal>
+             )}
         </div>
     );
 };

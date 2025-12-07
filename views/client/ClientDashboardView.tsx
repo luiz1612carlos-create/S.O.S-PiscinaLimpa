@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent } from '../../types';
+import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent, RecessPeriod } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Modal } from '../../components/Modal';
-import { WeatherSunnyIcon, CopyIcon, CheckIcon, XMarkIcon } from '../../constants';
+import { WeatherSunnyIcon, CopyIcon, CheckIcon, XMarkIcon, CalendarDaysIcon } from '../../constants';
 import { calculateClientMonthlyFee } from '../../utils/calculations';
 
 interface ClientDashboardViewProps {
@@ -86,7 +86,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
             return;
         }
         if (newPassword.length < 6) {
-            showNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
+            showNotification('A senha deve ter no mínimo 6 caracteres.', 'error');
             return;
         }
         
@@ -138,6 +138,26 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         return "Ver opções de desconto";
     }, [hasPendingAdvanceRequest, isBlockedByDueDate]);
 
+    const upcomingRecesses = useMemo(() => {
+        if (!settings?.recessPeriods) return [];
+        
+        const now = new Date();
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(now.getDate() + 30);
+        now.setHours(0,0,0,0);
+
+        return settings.recessPeriods.filter(recess => {
+            const startDate = toDate(recess.startDate);
+            const endDate = toDate(recess.endDate);
+            if (!startDate || !endDate) return false;
+
+            const isActive = now >= startDate && now <= endDate;
+            const isUpcoming = startDate <= thirtyDaysFromNow && endDate >= now;
+
+            return isActive || isUpcoming;
+        }).sort((a, b) => (toDate(a.startDate)?.getTime() || 0) - (toDate(b.startDate)?.getTime() || 0));
+    }, [settings?.recessPeriods]);
+
 
     if (loading || !settings) {
         return <div className="flex justify-center items-center h-64"><Spinner size="lg" /></div>;
@@ -158,6 +178,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
                 
+                {upcomingRecesses.length > 0 && <RecessNotificationCard recesses={upcomingRecesses} />}
+
                 {pendingQuote && <ReplenishmentCard quote={pendingQuote} client={clientData} updateStatus={updateReplenishmentQuoteStatus} createOrder={createOrder} showNotification={showNotification}/>}
                 
                 {showStatusCard && mostRecentRequest ? (
@@ -317,6 +339,35 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         </div>
     );
 };
+
+interface RecessNotificationCardProps {
+    recesses: RecessPeriod[];
+}
+
+const RecessNotificationCard: React.FC<RecessNotificationCardProps> = ({ recesses }) => (
+    <Card className="border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20">
+        <CardHeader>
+            <div className="flex items-center gap-3">
+                <CalendarDaysIcon className="w-6 h-6 text-blue-600" />
+                <h3 className="text-xl font-semibold text-blue-700 dark:text-blue-300">Aviso de Recesso</h3>
+            </div>
+        </CardHeader>
+        <CardContent>
+            <p className="mb-4">Informamos que nossa equipe estará em recesso nos seguintes períodos. Planeje suas solicitações com antecedência.</p>
+            <div className="space-y-2">
+                {recesses.map(recess => (
+                    <div key={recess.id} className="p-2 bg-white dark:bg-gray-700 rounded-md">
+                        <p className="font-semibold">{recess.name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            De {toDate(recess.startDate)?.toLocaleDateString('pt-BR')} até {toDate(recess.endDate)?.toLocaleDateString('pt-BR')}
+                        </p>
+                    </div>
+                ))}
+            </div>
+        </CardContent>
+    </Card>
+);
+
 
 interface RequestStatusCardProps {
     request: AdvancePaymentRequest;
