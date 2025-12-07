@@ -138,27 +138,30 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
     const { products, loading, saveProduct, deleteProduct, showNotification } = appContext;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | Omit<Product, 'id'> | null>(null);
+    const [productImageFile, setProductImageFile] = useState<File | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     const handleOpenModal = (product: Product | null = null) => {
         if (product) {
             setSelectedProduct(product);
         } else {
-            setSelectedProduct({ name: '', description: '', price: 0, stock: 0, imageUrl: `https://picsum.photos/400/300?random=${Date.now()}` });
+            setSelectedProduct({ name: '', description: '', price: 0, stock: 0, imageUrl: `https://via.placeholder.com/400x300.png?text=Sem+Imagem` });
         }
+        setProductImageFile(null);
         setIsModalOpen(true);
     };
 
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setSelectedProduct(null);
+        setProductImageFile(null);
     };
 
     const handleSave = async () => {
         if (!selectedProduct) return;
         setIsSaving(true);
         try {
-            await saveProduct(selectedProduct);
+            await saveProduct(selectedProduct, productImageFile || undefined);
             showNotification('Produto salvo com sucesso!', 'success');
             handleCloseModal();
         } catch (error: any) {
@@ -208,7 +211,7 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
             )}
              {isModalOpen && selectedProduct && (
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in selectedProduct ? 'Editar Produto' : 'Adicionar Produto'}>
-                    <ProductForm product={selectedProduct} setProduct={setSelectedProduct} />
+                    <ProductForm product={selectedProduct} setProduct={setSelectedProduct} onFileChange={setProductImageFile} />
                     <div className="flex justify-end gap-2 mt-4">
                         <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
                         <Button onClick={handleSave} isLoading={isSaving}>Salvar</Button>
@@ -219,7 +222,21 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
     );
 };
 
-const ProductForm = ({ product, setProduct }: { product: any, setProduct: any }) => {
+const ProductForm = ({ product, setProduct, onFileChange }: { product: any, setProduct: any, onFileChange: (file: File | null) => void }) => {
+    const [imagePreview, setImagePreview] = useState<string | null>(product.imageUrl);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            onFileChange(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type } = e.target;
         setProduct({ ...product, [name]: type === 'number' ? parseFloat(value) : value });
@@ -229,9 +246,29 @@ const ProductForm = ({ product, setProduct }: { product: any, setProduct: any })
         <div className="space-y-4">
             <Input label="Nome do Produto" name="name" value={product.name} onChange={handleChange} />
             <Input label="Descrição" name="description" value={product.description} onChange={handleChange} />
-            <Input label="Preço" name="price" type="number" step="0.01" value={product.price} onChange={handleChange} />
-            <Input label="Estoque" name="stock" type="number" value={product.stock} onChange={handleChange} />
-            <Input label="URL da Imagem" name="imageUrl" value={product.imageUrl} onChange={handleChange} />
+            <div className="grid grid-cols-2 gap-4">
+                <Input label="Preço" name="price" type="number" step="0.01" value={product.price} onChange={handleChange} />
+                <Input label="Estoque" name="stock" type="number" value={product.stock} onChange={handleChange} />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Imagem do Produto
+                </label>
+                {imagePreview && (
+                    <img 
+                        src={imagePreview} 
+                        alt="Preview do produto" 
+                        className="w-full h-48 object-cover rounded-md mb-2 bg-gray-100 dark:bg-gray-700"
+                    />
+                )}
+                <Input 
+                    label=""
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleFileChange}
+                    containerClassName="mb-0"
+                />
+            </div>
         </div>
     );
 }

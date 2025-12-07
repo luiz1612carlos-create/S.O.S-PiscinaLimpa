@@ -522,11 +522,32 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
-    const saveProduct = (product: Omit<Product, 'id'> | Product) => {
+    const saveProduct = async (product: Omit<Product, 'id'> | Product, imageFile?: File) => {
+        let productData = { ...product };
+        let docRef;
+    
         if ('id' in product) {
-            return db.collection('products').doc(product.id).update(product);
+            // Existing product
+            docRef = db.collection('products').doc(product.id);
+        } else {
+            // New product
+            docRef = db.collection('products').doc();
         }
-        return db.collection('products').add(product);
+    
+        if (imageFile) {
+            const storageRef = storage.ref(`products/${docRef.id}/${imageFile.name}`);
+            const snapshot = await storageRef.put(imageFile);
+            productData.imageUrl = await snapshot.ref.getDownloadURL();
+        }
+        
+        if ('id' in product) {
+            // Update existing
+            const { id, ...dataToUpdate } = productData as Product;
+            return docRef.update(dataToUpdate);
+        } else {
+            // Set new with specific ID
+            return docRef.set(productData);
+        }
     };
 
     const deleteProduct = (productId: string) => db.collection('products').doc(productId).delete();

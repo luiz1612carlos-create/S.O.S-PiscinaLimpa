@@ -26,6 +26,15 @@ const toDate = (timestamp: any): Date | null => {
     return null;
 };
 
+// Moved from modal to be accessible by parent component
+interface ClientFormData extends Omit<Client, 'poolDimensions'> {
+    poolDimensions: {
+        width: string | number;
+        length: string | number;
+        depth: string | number;
+    }
+}
+
 
 const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
     const { clients, loading, products, banks, updateClient, deleteClient, markAsPaid, showNotification, settings, stockProducts } = appContext;
@@ -51,11 +60,26 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         setSelectedClient(null);
     };
     
-    const handleSaveChanges = async (clientToSave: Client) => {
-        if (!clientToSave) return;
+    const handleSaveChanges = async (clientData: ClientFormData) => {
+        if (!clientData) return;
         setIsSaving(true);
         try {
+            const volume = calculateVolume(
+                clientData.poolDimensions.width,
+                clientData.poolDimensions.length,
+                clientData.poolDimensions.depth
+            );
+            const clientToSave: Client = {
+                ...clientData,
+                poolDimensions: {
+                    width: normalizeDimension(clientData.poolDimensions.width),
+                    length: normalizeDimension(clientData.poolDimensions.length),
+                    depth: normalizeDimension(clientData.poolDimensions.depth),
+                },
+                poolVolume: volume,
+            };
             const { id, ...dataToUpdate } = clientToSave;
+
             await updateClient(id, dataToUpdate);
             showNotification('Cliente atualizado com sucesso!', 'success');
             handleCloseModal();
@@ -81,29 +105,37 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         }
     }
     
-    const handleMarkPaid = async () => {
-        if(!selectedClient || !settings) return;
+    const handleMarkPaid = async (clientData: ClientFormData) => {
+        if (!clientData || !settings) return;
 
-        const fee = calculateClientMonthlyFee(selectedClient, settings);
-        if (!window.confirm(`Confirma o pagamento da mensalidade de R$ ${fee.toFixed(2)} para ${selectedClient.name}?`)) return;
+        const volume = calculateVolume(
+            clientData.poolDimensions.width,
+            clientData.poolDimensions.length,
+            clientData.poolDimensions.depth
+        );
 
+        const clientToPay: Client = {
+            ...clientData,
+            poolDimensions: {
+                width: normalizeDimension(clientData.poolDimensions.width),
+                length: normalizeDimension(clientData.poolDimensions.length),
+                depth: normalizeDimension(clientData.poolDimensions.depth),
+            },
+            poolVolume: volume,
+        };
+    
+        const fee = calculateClientMonthlyFee(clientToPay, settings);
+        if (!window.confirm(`Confirma o pagamento da mensalidade de R$ ${fee.toFixed(2)} para ${clientToPay.name}?`)) return;
+    
         setIsSaving(true);
         try {
-            await markAsPaid(selectedClient, 1, fee);
+            await markAsPaid(clientToPay, 1, fee);
             showNotification('Pagamento registrado com sucesso!', 'success');
-             // Manually update the client in the modal to reflect the change immediately
-            setSelectedClient(prev => prev ? {
-                ...prev,
-                payment: {
-                    ...prev.payment,
-                    status: 'Pago',
-                    dueDate: new Date(new Date(prev.payment.dueDate).setMonth(new Date(prev.payment.dueDate).getMonth() + 1)).toISOString()
-                }
-            } : null);
+            handleCloseModal();
         } catch (error: any) {
-             showNotification(error.message || 'Falha ao registrar pagamento.', 'error');
+            showNotification(error.message || 'Falha ao registrar pagamento.', 'error');
         } finally {
-             setIsSaving(false);
+            setIsSaving(false);
         }
     };
     
@@ -167,21 +199,13 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
     );
 };
 
-interface ClientFormData extends Omit<Client, 'poolDimensions'> {
-    poolDimensions: {
-        width: string | number;
-        length: string | number;
-        depth: string | number;
-    }
-}
-
 interface ClientEditModalProps {
     client: Client;
     isOpen: boolean;
     onClose: () => void;
-    onSave: (client: Client) => void;
+    onSave: (clientData: ClientFormData) => void;
     onDelete: () => void;
-    onMarkPaid: () => void;
+    onMarkPaid: (clientData: ClientFormData) => void;
     isSaving: boolean;
     isDeleting: boolean;
     stockProducts: StockProduct[];
@@ -306,16 +330,11 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
     };
 
     const handleSaveClick = () => {
-        const normalizedClient: Client = {
-            ...clientData,
-            poolDimensions: {
-                width: normalizeDimension(clientData.poolDimensions.width),
-                length: normalizeDimension(clientData.poolDimensions.length),
-                depth: normalizeDimension(clientData.poolDimensions.depth),
-            },
-            poolVolume: volume,
-        };
-        onSave(normalizedClient);
+        onSave(clientData);
+    };
+
+    const handleMarkPaidClick = () => {
+        onMarkPaid(clientData);
     };
 
     const calculatedFee = useMemo(() => {
@@ -470,7 +489,7 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                             />
                         </div>
                         <div className="flex justify-end">
-                            <Button onClick={onMarkPaid} isLoading={isSaving} disabled={clientData.payment.status === 'Pago'}>
+                            <Button onClick={handleMarkPaidClick} isLoading={isSaving} disabled={clientData.payment.status === 'Pago'}>
                                 Marcar como Pago
                             </Button>
                         </div>

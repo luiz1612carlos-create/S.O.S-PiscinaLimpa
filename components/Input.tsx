@@ -9,6 +9,15 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 
 export const Input: React.FC<InputProps> = ({ label, id, error, containerClassName = '', ...props }) => {
     const inputId = id || `input-${props.name}`;
+    
+    const baseClasses = "w-full border rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2";
+    const focusClasses = error ? 'border-red-500 focus:ring-red-500' : 'focus:ring-primary-500 focus:border-primary-500';
+    
+    // Add specific styling for file inputs for better UX
+    const typeClasses = props.type === 'file'
+        ? 'p-0 file:mr-4 file:py-2 file:px-4 file:rounded-l-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 dark:file:bg-gray-600 dark:file:text-gray-200 dark:hover:file:bg-gray-500 cursor-pointer file:transition-colors file:duration-200'
+        : 'px-3 py-2';
+
     return (
         <div className={`mb-4 ${containerClassName}`}>
             <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -16,7 +25,7 @@ export const Input: React.FC<InputProps> = ({ label, id, error, containerClassNa
             </label>
             <input
                 id={inputId}
-                className={`w-full px-3 py-2 border rounded-md shadow-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 ${error ? 'border-red-500 focus:ring-red-500' : 'focus:ring-primary-500 focus:border-primary-500'}`}
+                className={`${baseClasses} ${focusClasses} ${typeClasses}`}
                 {...props}
             />
             {error && <p className="mt-1 text-sm text-red-500">{error}</p>}

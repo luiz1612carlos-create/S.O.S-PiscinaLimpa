@@ -297,7 +297,7 @@ export interface AppData {
     scheduleClient: (clientId: string, day: string) => Promise<void>;
     unscheduleClient: (clientId: string, day: string) => Promise<void>;
     toggleRouteStatus: (day: string, status: boolean) => Promise<void>;
-    saveProduct: (product: Omit<Product, 'id'> | Product) => Promise<void>;
+    saveProduct: (product: Omit<Product, 'id'> | Product, imageFile?: File) => Promise<void>;
     deleteProduct: (productId: string) => Promise<void>;
     saveStockProduct: (product: Omit<StockProduct, 'id'> | StockProduct) => Promise<void>;
     deleteStockProduct: (productId: string) => Promise<void>;

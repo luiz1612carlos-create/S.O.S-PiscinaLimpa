@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppContextType, Client, PoolUsageStatus, Visit, ClientProduct, StockProduct } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -69,6 +70,7 @@ const TechnicianDashboardView: React.FC<TechnicianDashboardViewProps> = ({ appCo
 
             {selectedClient && (
                 <ClientVisitModal
+                    key={selectedClient.id} // Re-mount modal when client changes to ensure fresh state
                     client={selectedClient}
                     isOpen={!!selectedClient}
                     onClose={() => setSelectedClient(null)}
@@ -105,36 +107,16 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSavingStock, setIsSavingStock] = useState(false);
     
-    // Form state
-    const [ph, setPh] = useState('');
-    const [cloro, setCloro] = useState('');
-    const [alcalinidade, setAlcalinidade] = useState('');
-    const [uso, setUso] = useState<PoolUsageStatus>('Livre para uso');
+    // Form state initialized directly from props. This is safe because the component re-mounts on client change.
+    const [ph, setPh] = useState(client.poolStatus.ph.toString());
+    const [cloro, setCloro] = useState(client.poolStatus.cloro.toString());
+    const [alcalinidade, setAlcalinidade] = useState(client.poolStatus.alcalinidade.toString());
+    const [uso, setUso] = useState<PoolUsageStatus>(client.poolStatus.uso);
     const [notes, setNotes] = useState('');
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-    const [stockData, setStockData] = useState<ClientProduct[]>([]);
-
-    // FIX: Use useEffect to correctly sync the modal's state with the selected client prop.
-    // This solves the issue of stale data being shown and saved.
-    useEffect(() => {
-        if (client) {
-            // Reset view state
-            setIsAddingVisit(false);
-            
-            // Reset visit form fields
-            setPh(client.poolStatus.ph.toString());
-            setCloro(client.poolStatus.cloro.toString());
-            setAlcalinidade(client.poolStatus.alcalinidade.toString());
-            setUso(client.poolStatus.uso);
-            setNotes('');
-            setPhotoFile(null);
-            setPhotoPreview(null);
-            
-            // Reset stock data
-            setStockData(client.stock || []);
-        }
-    }, [client]);
+    const [stockData, setStockData] = useState<ClientProduct[]>(client.stock || []);
+    const [fileInputKey, setFileInputKey] = useState(Date.now());
 
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -145,11 +127,16 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
                 setPhotoPreview(reader.result as string);
             };
             reader.readAsDataURL(file);
+        } else {
+            // Ensure state is cleared if user cancels file selection
+            setPhotoFile(null);
+            setPhotoPreview(null);
         }
     };
 
     const resetForm = () => {
         setIsAddingVisit(false);
+        // Reset to client's current status
         setPh(client.poolStatus.ph.toString());
         setCloro(client.poolStatus.cloro.toString());
         setAlcalinidade(client.poolStatus.alcalinidade.toString());
@@ -157,6 +144,7 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
         setNotes('');
         setPhotoFile(null);
         setPhotoPreview(null);
+        setFileInputKey(Date.now()); // Force file input to reset
     };
 
     const handleSubmitVisit = async (e: React.FormEvent) => {
@@ -172,7 +160,6 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
             };
             await addVisitRecord(client.id, visitData, photoFile || undefined);
             showNotification('Visita registrada com sucesso!', 'success');
-            resetForm();
             onClose(); // Close modal on success
         } catch (error: any) {
             showNotification(error.message || 'Erro ao registrar visita.', 'error');
@@ -219,11 +206,11 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
                                 <Select label="Uso" value={uso} onChange={e => setUso(e.target.value as PoolUsageStatus)} options={[{ value: 'Livre para uso', label: 'Livre' }, { value: 'Em tratamento', label: 'Tratamento' }]} containerClassName="mb-0"/>
                             </div>
                             <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observações..." rows={3} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                            <Input label="Foto da Piscina (Opcional)" type="file" accept="image/*" onChange={handlePhotoChange} />
+                            <Input key={fileInputKey} label="Foto da Piscina (Opcional)" type="file" accept="image/*" onChange={handlePhotoChange} />
                             {photoPreview && (
                                 <div className="relative w-32 h-32">
                                     <img src={photoPreview} alt="Preview" className="w-full h-full object-cover rounded-md" />
-                                    <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null); }} className="absolute top-0 right-0 p-1 bg-red-500 text-white rounded-full">
+                                    <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null); setFileInputKey(Date.now()); }} className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md">
                                         <XMarkIcon className="w-4 h-4" />
                                     </button>
                                 </div>
