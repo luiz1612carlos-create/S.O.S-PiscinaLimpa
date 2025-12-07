@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppContextType, Client, PoolUsageStatus, Visit, ClientProduct, StockProduct } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -117,6 +118,7 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [stockData, setStockData] = useState<ClientProduct[]>(client.stock || []);
     const [fileInputKey, setFileInputKey] = useState(Date.now());
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -150,6 +152,9 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
     const handleSubmitVisit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
+        if (photoFile) {
+            setUploadProgress(0);
+        }
         try {
             const visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'> = {
                 ph: parseFloat(ph) || 0,
@@ -158,13 +163,16 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
                 uso,
                 notes,
             };
-            await addVisitRecord(client.id, visitData, photoFile || undefined);
+            await addVisitRecord(client.id, visitData, photoFile || undefined, (progress) => {
+                setUploadProgress(progress);
+            });
             showNotification('Visita registrada com sucesso!', 'success');
             onClose(); // Close modal on success
         } catch (error: any) {
             showNotification(error.message || 'Erro ao registrar visita.', 'error');
         } finally {
             setIsSubmitting(false);
+            setUploadProgress(null);
         }
     };
 
@@ -216,9 +224,22 @@ const ClientVisitModal: React.FC<ClientVisitModalProps> = ({ client, isOpen, onC
                                 </div>
                             )}
                         </fieldset>
+                         {uploadProgress !== null && (
+                            <div className="my-2">
+                                <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                                    <div 
+                                        className="bg-primary-600 h-2.5 rounded-full transition-all duration-300" 
+                                        style={{ width: `${uploadProgress}%` }}
+                                    ></div>
+                                </div>
+                                <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                    Enviando foto... {Math.round(uploadProgress)}%
+                                </p>
+                            </div>
+                        )}
                         <div className="flex justify-end gap-2 mt-4">
-                            <Button type="button" variant="secondary" onClick={resetForm}>Cancelar</Button>
-                            <Button type="submit" isLoading={isSubmitting}>Salvar Visita</Button>
+                            <Button type="button" variant="secondary" onClick={resetForm} disabled={isSubmitting}>Cancelar</Button>
+                            <Button type="submit" isLoading={isSubmitting && !photoFile} disabled={isSubmitting}>Salvar Visita</Button>
                         </div>
                     </form>
                 ) : (

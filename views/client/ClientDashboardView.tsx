@@ -182,9 +182,12 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
 
                 {pendingQuote && <ReplenishmentCard quote={pendingQuote} client={clientData} updateStatus={updateReplenishmentQuoteStatus} createOrder={createOrder} showNotification={showNotification}/>}
                 
-                {showStatusCard && mostRecentRequest ? (
+                {showStatusCard && mostRecentRequest && (
                     <RequestStatusCard request={mostRecentRequest} client={clientData} />
-                ) : isAdvancePlanGloballyAvailable && settings.advancePaymentOptions.length > 0 ? (
+                )}
+
+                {isAdvancePlanGloballyAvailable && settings.advancePaymentOptions.length > 0 &&
+                    (!showStatusCard || (mostRecentRequest && mostRecentRequest.status === 'rejected')) && (
                     <div className="bg-primary-500 text-white rounded-lg p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
                         <div className="text-center md:text-left">
                             <h3 className="font-bold text-xl">{settings.features.advancePaymentTitle}</h3>
@@ -198,10 +201,10 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                             disabled={isBlockedByDueDate || hasPendingAdvanceRequest}
                             title={disabledTitle}
                         >
-                            Ver Opções de Desconto
+                            {mostRecentRequest?.status === 'rejected' && showStatusCard ? 'Tentar Novamente' : 'Ver Opções de Desconto'}
                         </Button>
                     </div>
-                ) : null}
+                )}
                 
                 <EventSchedulerCard
                     client={clientData}
@@ -388,7 +391,7 @@ const RequestStatusCard: React.FC<RequestStatusCardProps> = ({ request, client }
         },
         rejected: {
             title: "Solicitação Rejeitada",
-            message: "Sua solicitação foi rejeitada. Por favor, entre em contato para mais detalhes.",
+            message: "Sua solicitação não foi aprovada. Você pode tentar novamente com outra opção ou entrar em contato para mais detalhes.",
             color: "red"
         }
     };

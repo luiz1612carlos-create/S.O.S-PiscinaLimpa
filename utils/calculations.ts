@@ -1,4 +1,3 @@
-
 import { Client, Settings, FidelityPlan } from './types';
 
 export const normalizeDimension = (value: string | number): number => {
@@ -37,4 +36,66 @@ export const calculateClientMonthlyFee = (client: Partial<Client>, settings: Set
     }
 
     return basePrice;
+};
+
+/**
+ * Compresses an image file before upload.
+ * @param file The image file to compress.
+ * @param options Configuration for max width and quality.
+ * @returns A promise that resolves with the compressed file.
+ */
+export const compressImage = (file: File, options: { maxWidth: number; quality: number }): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    // If not an image, return the original file
+    if (!file.type.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onerror = reject;
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onerror = reject;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const { width, height } = img;
+        let newWidth = width;
+        let newHeight = height;
+
+        if (width > options.maxWidth) {
+          newWidth = options.maxWidth;
+          newHeight = (height * options.maxWidth) / width;
+        }
+
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return reject(new Error('Could not get canvas context'));
+        }
+        ctx.drawImage(img, 0, 0, newWidth, newHeight);
+
+        // Convert to JPEG for optimal compression.
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              return reject(new Error('Canvas to Blob conversion failed'));
+            }
+            const newFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpeg";
+            const newFile = new File([blob], newFileName, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(newFile);
+          },
+          'image/jpeg',
+          options.quality
+        );
+      };
+    };
+  });
 };

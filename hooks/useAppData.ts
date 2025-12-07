@@ -1,7 +1,3 @@
-
-
-
-
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
@@ -10,7 +6,7 @@ import {
     AdvancePaymentRequest, AdvancePaymentRequestStatus, RouteDay, FidelityPlan, Visit, StockProduct,
     PendingPriceChange, PricingSettings, AffectedClientPreview, PoolEvent, RecessPeriod
 } from '../types';
-import { calculateClientMonthlyFee } from '../utils/calculations';
+import { compressImage } from '../utils/calculations';
 
 // Helper for deep merging settings to avoid errors on updates
 const isObject = (item: any) => {
@@ -39,6 +35,7 @@ const defaultSettings: Settings = {
     companyName: "S.O.S Piscina Limpa",
     mainTitle: "S.O.S Piscina Limpa",
     mainSubtitle: "Compromisso e Qualidade",
+    logoUrl: "",
     baseAddress: {
         street: "Rua Principal",
         number: "123",
@@ -605,8 +602,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         }
     
         if (imageFile) {
-            const storageRef = storage.ref(`products/${docRef.id}/${imageFile.name}`);
-            const snapshot = await storageRef.put(imageFile);
+            const compressedFile = await compressImage(imageFile, { maxWidth: 1024, quality: 0.8 });
+            const storageRef = storage.ref(`products/${docRef.id}/${compressedFile.name}`);
+            const snapshot = await storageRef.put(compressedFile);
             productData.imageUrl = await snapshot.ref.getDownloadURL();
         }
         
@@ -641,7 +639,45 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const deleteBank = (bankId: string) => db.collection('banks').doc(bankId).delete();
 
     const updateOrderStatus = (orderId: string, status: OrderStatus) => db.collection('orders').doc(orderId).update({ status });
-    const updateSettings = (newSettings: Partial<Settings>) => db.collection('settings').doc('main').set(newSettings, { merge: true });
+    
+    const updateSettings = async (newSettings: Partial<Settings>, logoFile?: File, removeLogo?: boolean, onProgress?: (progress: number) => void) => {
+        const settingsUpdate: { [key: string]: any } = { ...newSettings };
+    
+        if (removeLogo) {
+            const storageRef = storage.ref('settings/logo');
+            settingsUpdate.logoUrl = firebase.firestore.FieldValue.delete();
+            try {
+                await storageRef.delete();
+            } catch (error: any) {
+                if (error.code !== 'storage/object-not-found') {
+                    console.error("Error deleting old logo:", error);
+                }
+            }
+        } else if (logoFile) {
+            const compressedFile = await compressImage(logoFile, { maxWidth: 512, quality: 0.9 });
+            const storageRef = storage.ref('settings/logo');
+            const uploadTask = storageRef.put(compressedFile);
+    
+            await new Promise<void>((resolve, reject) => {
+                uploadTask.on('state_changed',
+                    (snapshot: any) => {
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        if (onProgress) onProgress(progress);
+                    },
+                    (error: any) => {
+                        console.error("Upload failed:", error);
+                        reject(error);
+                    },
+                    async () => {
+                        settingsUpdate.logoUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                        resolve();
+                    }
+                );
+            });
+        }
+    
+        return db.collection('settings').doc('main').set(settingsUpdate, { merge: true });
+    };
     
     const schedulePriceChange = async (newPricing: PricingSettings, affectedClients: AffectedClientPreview[]) => {
         const effectiveDate = new Date();
@@ -743,7 +779,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
-    const addVisitRecord = async (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File) => {
+    const addVisitRecord = async (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File, onProgress?: (progress: number) => void) => {
         if (!userData || (userData.role !== 'admin' && userData.role !== 'technician')) {
             throw new Error("Apenas administradores ou técnicos podem registrar visitas.");
         }
@@ -752,9 +788,23 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         let photoUrl = '';
 
         if (photoFile) {
-            const storageRef = storage.ref(`visits/${clientId}/${visitId}_${photoFile.name}`);
-            const snapshot = await storageRef.put(photoFile);
-            photoUrl = await snapshot.ref.getDownloadURL();
+            const compressedFile = await compressImage(photoFile, { maxWidth: 1920, quality: 0.75 });
+            const storageRef = storage.ref(`visits/${clientId}/${visitId}_${compressedFile.name}`);
+            const uploadTask = storageRef.put(compressedFile);
+
+            await new Promise<void>((resolve, reject) => {
+                uploadTask.on('state_changed', 
+                    (snapshot: any) => {
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        if (onProgress) onProgress(progress);
+                    }, 
+                    (error: any) => reject(error), 
+                    async () => {
+                        photoUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                        resolve();
+                    }
+                );
+            });
         }
         
         const newVisit: Omit<Visit, 'photoUrl'> & { photoUrl?: string } = {

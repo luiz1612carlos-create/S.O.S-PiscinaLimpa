@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState } from 'react';
 import { AuthContextType, AppContextType, AdminView } from '../../types';
 import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon, ArchiveBoxIcon, SparklesIcon } from '../../constants';
@@ -57,9 +58,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
 
     const SidebarContent = () => (
         <>
-            <div className="p-4 border-b dark:border-gray-700">
-                <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Piscina Limpa'}</h1>
-                <p className="text-sm text-gray-500">Painel Admin</p>
+            <div className="p-4 border-b dark:border-gray-700 h-16 flex items-center">
+                {appContext.settings?.logoUrl ? (
+                    <img src={appContext.settings.logoUrl} alt={appContext.settings.companyName} className="h-10 max-w-full" />
+                ) : (
+                    <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Piscina Limpa'}</h1>
+                )}
             </div>
             <nav className="flex-1 p-4 space-y-2">
                 {menuItems.map(item => (

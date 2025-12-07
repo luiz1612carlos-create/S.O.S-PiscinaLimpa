@@ -1,5 +1,3 @@
-
-
 export interface UserData {
     uid: string;
     email: string;
@@ -16,6 +14,9 @@ export type OrderStatus = 'Pendente' | 'Enviado' | 'Entregue';
 export type ReplenishmentQuoteStatus = 'suggested' | 'sent' | 'approved' | 'rejected';
 export type AdvancePaymentRequestStatus = 'pending' | 'approved' | 'rejected';
 export type PoolEventStatus = 'notified' | 'acknowledged';
+
+// FIX: Add missing AdminView type used in AdminLayout.
+export type AdminView = 'reports' | 'approvals' | 'advances' | 'events' | 'clients' | 'routes' | 'store' | 'stock' | 'settings';
 
 export interface Address {
     street: string;
@@ -218,6 +219,7 @@ export interface Settings {
     companyName: string;
     mainTitle: string;
     mainSubtitle: string;
+    logoUrl?: string;
     baseAddress: Address;
     pixKey: string;
     pricing: {
@@ -344,7 +346,7 @@ export interface AppData {
     saveBank: (bank: Omit<Bank, 'id'> | Bank) => Promise<void>;
     deleteBank: (bankId: string) => Promise<void>;
     updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
-    updateSettings: (newSettings: Partial<Settings>) => Promise<void>;
+    updateSettings: (newSettings: Partial<Settings>, logoFile?: File, removeLogo?: boolean, onProgress?: (progress: number) => void) => Promise<void>;
     schedulePriceChange: (newPricing: PricingSettings, affectedClients: AffectedClientPreview[]) => Promise<void>;
     createBudgetQuote: (budget: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => Promise<void>;
     createOrder: (order: Omit<Order, 'id' | 'createdAt'>) => Promise<void>;
@@ -355,12 +357,10 @@ export interface AppData {
     createAdvancePaymentRequest: (request: Omit<AdvancePaymentRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>) => Promise<void>;
     approveAdvancePaymentRequest: (requestId: string) => Promise<void>;
     rejectAdvancePaymentRequest: (requestId: string) => Promise<void>;
-    addVisitRecord: (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File) => Promise<void>;
+    addVisitRecord: (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File, onProgress?: (progress: number) => void) => Promise<void>;
     resetReportsData: () => Promise<void>;
     createPoolEvent: (event: Omit<PoolEvent, 'id' | 'status' | 'createdAt' | 'clientId' | 'clientName'> & { clientId: string, clientName: string }) => Promise<void>;
     acknowledgePoolEvent: (eventId: string) => Promise<void>;
     saveRecessPeriod: (recess: Omit<RecessPeriod, 'id'> | RecessPeriod) => Promise<void>;
     deleteRecessPeriod: (recessId: string) => Promise<void>;
 }
-
-export type AdminView = 'reports' | 'clients' | 'routes' | 'approvals' | 'store' | 'stock' | 'settings' | 'advances' | 'events';

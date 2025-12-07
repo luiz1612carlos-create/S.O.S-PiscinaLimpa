@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback } from 'react';
 import { useTheme } from './hooks/useTheme';
 import { useAuth } from './hooks/useAuth';
@@ -70,7 +71,11 @@ const App: React.FC = () => {
                 <div className="absolute top-4 right-4"><ThemeToggle /></div>
                 <div className="w-full max-w-4xl mx-auto">
                     <header className="text-center mb-8">
-                        <h1 className="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-400">{appData.settings?.mainTitle || 'Piscina Limpa'}</h1>
+                        {appData.settings?.logoUrl ? (
+                            <img src={appData.settings.logoUrl} alt={appData.settings.companyName || 'Logo'} className="h-16 mx-auto" />
+                        ) : (
+                            <h1 className="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-400">{appData.settings?.mainTitle || 'Piscina Limpa'}</h1>
+                        )}
                         <p className="text-gray-600 dark:text-gray-300 mt-2">{appData.settings?.mainSubtitle || 'Compromisso e Qualidade'}</p>
                     </header>
                     <div className="bg-white dark:bg-gray-800 shadow-2xl rounded-lg overflow-hidden">

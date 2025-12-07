@@ -169,3 +169,23 @@ export const ArchiveBoxIcon = (props: React.SVGProps<SVGSVGElement>) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
     </svg>
 );
+
+export const WrenchScrewdriverIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.471-2.471a2.652 2.652 0 00-3.75-3.75L4.5 13.5V21h7.5l-2.471-2.471a2.652 2.652 0 000-3.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 5.25l-2.471 2.471a2.652 2.652 0 01-3.75 0L8.828 2.25 2.25 8.828l5.471 5.471a2.652 2.652 0 003.75 0l2.471-2.471" />
+    </svg>
+);
+
+// List of icons for the Logo Builder
+export const LOGO_ICON_LIST = {
+  SparklesIcon,
+  SunIcon,
+  WeatherSunnyIcon,
+  CheckBadgeIcon,
+  WrenchScrewdriverIcon,
+  UsersIcon,
+  CurrencyDollarIcon,
+  ArchiveBoxIcon,
+  RouteIcon,
+};

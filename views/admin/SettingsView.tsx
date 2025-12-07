@@ -1,17 +1,15 @@
-
-
-
-
-
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData, AffectedClientPreview, PendingPriceChange, RecessPeriod } from '../../types';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
-import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon } from '../../constants';
+import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, WrenchScrewdriverIcon } from '../../constants';
 import { Modal } from '../../components/Modal';
+import { LogoBuilder } from '../../components/LogoBuilder';
+
+// This is a workaround for the no-build-tool environment
+declare const html2canvas: any;
 
 interface SettingsViewProps {
     appContext: AppContextType;
@@ -24,468 +22,6 @@ const toDate = (timestamp: any): Date | null => {
     if (typeof timestamp === 'string') return new Date(timestamp);
     if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
     return null;
-};
-
-const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) => {
-    const { settings, loading, updateSettings, showNotification, advancePlanUsage, clients, pendingPriceChanges, schedulePriceChange } = appContext;
-    const { changePassword } = authContext;
-    const [localSettings, setLocalSettings] = useState<Settings | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
-
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [isSavingPassword, setIsSavingPassword] = useState(false);
-
-    // State for price change confirmation modal
-    const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState(false);
-    const [affectedClientsPreview, setAffectedClientsPreview] = useState<AffectedClientPreview[]>([]);
-    const [effectiveDate, setEffectiveDate] = useState<Date | null>(null);
-    const [viewAffectedClientsModalOpen, setViewAffectedClientsModalOpen] = useState(false);
-
-    const pendingChange = pendingPriceChanges.find(c => c.status === 'pending');
-
-    useEffect(() => {
-        if (settings) {
-            setLocalSettings(JSON.parse(JSON.stringify(settings)));
-        }
-    }, [settings]);
-
-    if (loading.settings || loading.pendingPriceChanges || !localSettings) {
-        return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
-    }
-
-    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing') => {
-        const { name, value, type } = e.target;
-        const finalValue = type === 'number' ? parseFloat(value) || 0 : value;
-        
-        setLocalSettings(prev => {
-            if (!prev) return null;
-            if (section) {
-                const sectionKey = section as keyof Settings;
-                return {
-                    ...prev,
-                    [sectionKey]: {
-                        ...(prev[sectionKey] as any),
-                        [name]: finalValue,
-                    }
-                }
-            }
-            return {...prev, [name]: finalValue };
-        });
-    };
-    
-    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        let finalValue = value;
-        if (name === 'zip') {
-            finalValue = value
-                .replace(/\D/g, '')
-                .replace(/(\d{5})(\d)/, '$1-$2')
-                .slice(0, 9);
-        }
-        setLocalSettings(prev => {
-            if (!prev) return null;
-            return {
-                ...prev!,
-                baseAddress: {
-                    ...prev!.baseAddress,
-                    [name]: finalValue,
-                },
-            };
-        });
-    };
-
-    const handleToggle = (feature: keyof Settings['features']) => {
-        setLocalSettings(prev => ({
-            ...prev!,
-            features: {
-                ...prev!.features,
-                [feature]: !prev!.features[feature]
-            }
-        }));
-    };
-    
-     const handleTierChange = (index: number, field: 'upTo' | 'price', value: number) => {
-        const newTiers = [...localSettings.pricing.volumeTiers];
-        newTiers[index][field] = value;
-        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
-    };
-
-    const addTier = () => {
-        const newTiers = [...localSettings.pricing.volumeTiers, {upTo: 0, price: 0}];
-        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
-    };
-
-    const removeTier = (index: number) => {
-        const newTiers = localSettings.pricing.volumeTiers.filter((_, i) => i !== index);
-        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
-    };
-    
-    const handleFidelityPlanChange = (index: number, field: keyof Omit<FidelityPlan, 'id'>, value: number) => {
-        const newPlans = [...localSettings.fidelityPlans];
-        newPlans[index][field] = value;
-        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
-    };
-
-    const addFidelityPlan = () => {
-        const newPlan = { id: Date.now().toString(), months: 0, discountPercent: 0 };
-        const newPlans = [...localSettings.fidelityPlans, newPlan];
-        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
-    };
-
-    const removeFidelityPlan = (index: number) => {
-        const newPlans = localSettings.fidelityPlans.filter((_, i) => i !== index);
-        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
-    };
-
-    const handleAdvanceOptionChange = (index: number, field: keyof AdvancePaymentOption, value: number) => {
-        const newOptions = [...localSettings.advancePaymentOptions];
-        newOptions[index][field] = value;
-        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
-    };
-
-    const addAdvanceOption = () => {
-        const newOptions = [...localSettings.advancePaymentOptions, { months: 0, discountPercent: 0 }];
-        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
-    };
-
-    const removeAdvanceOption = (index: number) => {
-        const newOptions = localSettings.advancePaymentOptions.filter((_, i) => i !== index);
-        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
-    };
-
-
-    const handleSave = async () => {
-        if (!settings) return;
-        setIsSaving(true);
-        try {
-            const hasPriceChanged = JSON.stringify(localSettings.pricing) !== JSON.stringify(settings.pricing);
-
-            // Save all non-pricing settings immediately
-            const { pricing, ...otherSettings } = localSettings;
-            await updateSettings(otherSettings);
-
-            if (hasPriceChanged) {
-                if (pendingChange) {
-                    showNotification('Já existe uma alteração de preço agendada. Aguarde a aplicação para agendar uma nova.', 'error');
-                    setLocalSettings(prev => ({ ...prev!, pricing: settings.pricing })); // Revert local changes
-                    return;
-                }
-
-                // Calculate who is affected and show modal
-                const thirtyDaysFromNow = new Date();
-                thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-                const affected = clients.filter(c => {
-                    if (c.clientStatus !== 'Ativo') return false;
-                    if (c.plan === 'Simples') return true;
-                    if (c.plan === 'VIP') {
-                        const dueDate = new Date(c.payment.dueDate);
-                        return dueDate <= thirtyDaysFromNow;
-                    }
-                    return false;
-                }).map(c => ({ id: c.id, name: c.name }));
-                
-                setAffectedClientsPreview(affected);
-                setEffectiveDate(thirtyDaysFromNow);
-                setIsPriceChangeModalOpen(true);
-            } else {
-                showNotification('Configurações salvas com sucesso!', 'success');
-            }
-        } catch (error: any) {
-            showNotification(error.message || 'Erro ao salvar configurações.', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleConfirmPriceChange = async () => {
-        setIsSaving(true);
-        try {
-            await schedulePriceChange(localSettings.pricing, affectedClientsPreview);
-            showNotification('Alteração de preço agendada com sucesso!', 'success');
-            setIsPriceChangeModalOpen(false);
-        } catch (error: any) {
-             showNotification(error.message || 'Erro ao agendar alteração de preço.', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handlePasswordChange = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (newPassword !== confirmPassword) {
-            showNotification('As senhas não coincidem.', 'error');
-            return;
-        }
-        if (newPassword.length < 6) {
-            showNotification('A senha precisa ter no mínimo 6 caracteres.', 'error');
-            return;
-        }
-        setIsSavingPassword(true);
-        try {
-            await changePassword(newPassword);
-            showNotification('Senha alterada com sucesso!', 'success');
-            setNewPassword('');
-            setConfirmPassword('');
-        } catch(error: any) {
-            showNotification(error.message || 'Erro ao alterar a senha.', 'error');
-        } finally {
-            setIsSavingPassword(false);
-        }
-    };
-    
-    const activeClientsCount = clients.filter(c => c.clientStatus === 'Ativo').length;
-
-    return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold">Configurações Gerais</h2>
-                <Button onClick={handleSave} isLoading={isSaving}>Salvar Alterações</Button>
-            </div>
-
-            {pendingChange && (
-                <div className="p-4 mb-6 bg-blue-100 dark:bg-blue-900/30 border-l-4 border-blue-500 text-blue-800 dark:text-blue-200 rounded-md">
-                    <div className="flex items-center">
-                        <CalendarDaysIcon className="w-6 h-6 mr-3" />
-                        <div>
-                            <p className="font-bold">Alteração de Preço Agendada</p>
-                            <p>Novos preços entrarão em vigor em: <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong>.</p>
-                            <button onClick={() => setViewAffectedClientsModalOpen(true)} className="text-sm text-blue-600 dark:text-blue-300 hover:underline">
-                                Ver {pendingChange.affectedClients.length} cliente(s) afetado(s)
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="space-y-8">
-                {/* Company Info */}
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-                    <h3 className="text-xl font-semibold mb-4">Informações da Empresa e Tela Inicial</h3>
-                    <div className="grid md:grid-cols-2 gap-4">
-                        <Input label="Nome da Empresa (para painéis)" name="companyName" value={localSettings.companyName} onChange={(e) => handleSimpleChange(e)} />
-                        <Input label="Chave PIX Padrão" name="pixKey" value={localSettings.pixKey} onChange={(e) => handleSimpleChange(e)} />
-                        <Input containerClassName="md:col-span-2" label="Título Principal (Tela Inicial)" name="mainTitle" value={localSettings.mainTitle || ''} onChange={(e) => handleSimpleChange(e)} />
-                        <Input containerClassName="md:col-span-2" label="Subtítulo (Tela Inicial)" name="mainSubtitle" value={localSettings.mainSubtitle || ''} onChange={(e) => handleSimpleChange(e)} />
-                    </div>
-                     <fieldset className="mt-4 border p-4 rounded-md dark:border-gray-600">
-                        <legend className="px-2 font-semibold">Endereço da Empresa</legend>
-                        <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 mt-2">
-                            <Input
-                                containerClassName="sm:col-span-2"
-                                label="CEP"
-                                name="zip"
-                                value={localSettings.baseAddress.zip}
-                                onChange={handleAddressChange}
-                                placeholder="00000-000"
-                                pattern="[0-9]{5}-[0-9]{3}"
-                                title="Formato do CEP: 12345-678"
-                                maxLength={9}
-                            />
-                            <Input containerClassName="sm:col-span-4" label="Rua" name="street" value={localSettings.baseAddress.street} onChange={handleAddressChange} />
-                            <Input containerClassName="sm:col-span-2" label="Número" name="number" value={localSettings.baseAddress.number} onChange={handleAddressChange} />
-                            <Input containerClassName="sm:col-span-4" label="Bairro" name="neighborhood" value={localSettings.baseAddress.neighborhood} onChange={handleAddressChange} />
-                            <Input containerClassName="sm:col-span-4" label="Cidade" name="city" value={localSettings.baseAddress.city} onChange={handleAddressChange} />
-                            <Input containerClassName="sm:col-span-2" label="UF" name="state" value={localSettings.baseAddress.state} onChange={handleAddressChange} maxLength={2} />
-                        </div>
-                    </fieldset>
-                </div>
-                
-                {/* Bank Management */}
-                <BankManager appContext={appContext} />
-
-                {/* Recess Management */}
-                <RecessManager appContext={appContext} />
-
-                {/* User Management */}
-                <UserManager appContext={appContext} />
-
-                 {/* Automations */}
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-                    <h3 className="text-xl font-semibold mb-4">Automações</h3>
-                    <div className="grid md:grid-cols-2 gap-4">
-                        <Input 
-                            label="Gerar sugestão de reposição quando estoque for menor ou igual a (unidades)" 
-                            name="replenishmentStockThreshold" 
-                            type="number" 
-                            value={localSettings.automation.replenishmentStockThreshold} 
-                            onChange={(e) => handleSimpleChange(e, 'automation')} 
-                        />
-                    </div>
-                </div>
-
-                {/* Pricing */}
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow relative">
-                     {pendingChange && (
-                        <div className="absolute inset-0 bg-gray-400/30 dark:bg-gray-900/50 flex items-center justify-center z-10 rounded-lg">
-                            <span className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-md font-semibold shadow-lg">Bloqueado até a aplicação da mudança agendada.</span>
-                        </div>
-                    )}
-                    <fieldset disabled={!!pendingChange}>
-                        <h3 className="text-xl font-semibold mb-4">Precificação</h3>
-                        <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
-                            <strong>Atenção:</strong> Alterar estes valores agendará uma mudança de preço para os clientes aplicáveis, que entrará em vigor em 30 dias.
-                        </p>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                            <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                            <Input label="Taxa Água de Poço" name="wellWaterFee" type="number" value={localSettings.pricing.wellWaterFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                            <Input label="Taxa de Produtos" name="productsFee" type="number" value={localSettings.pricing.productsFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                            <Input label="Taxa Piscina de Festa" name="partyPoolFee" type="number" value={localSettings.pricing.partyPoolFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
-                        </div>
-                        <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
-                        {localSettings.pricing.volumeTiers.map((tier, index) => (
-                            <div key={index} className="flex items-center gap-2 mb-2">
-                            <span>Até</span>
-                            <Input label="" type="number" value={tier.upTo} onChange={(e) => handleTierChange(index, 'upTo', +e.target.value)} containerClassName="mb-0" />
-                            <span>litros, custa R$</span>
-                            <Input label="" type="number" value={tier.price} onChange={(e) => handleTierChange(index, 'price', +e.target.value)} containerClassName="mb-0" />
-                            <Button variant="danger" size="sm" onClick={() => removeTier(index)}><TrashIcon className="w-4 h-4"/></Button>
-                            </div>
-                        ))}
-                        <Button variant="secondary" size="sm" onClick={addTier}>Adicionar Faixa</Button>
-                    </fieldset>
-                </div>
-
-                {/* Plans */}
-                <div className="grid md:grid-cols-2 gap-8">
-                    <PlanEditor title="Plano Simples" planKey="simple" plan={localSettings.plans.simple} setLocalSettings={setLocalSettings} />
-                    <FidelityPlanEditor localSettings={localSettings} setLocalSettings={setLocalSettings} />
-                </div>
-
-                {/* Features */}
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-                    <h3 className="text-xl font-semibold mb-4">Gerenciamento de Funcionalidades</h3>
-                    <div className="space-y-4">
-                        <ToggleSwitch label="Ativar Plano VIP" enabled={localSettings.features.vipPlanEnabled} onChange={() => handleToggle('vipPlanEnabled')} />
-                        {!localSettings.features.vipPlanEnabled && (
-                            <div className="pl-8 mt-2">
-                                <Input 
-                                    label="Mensagem para Plano VIP desativado" 
-                                    name="vipPlanDisabledMessage" 
-                                    value={localSettings.features.vipPlanDisabledMessage || ''} 
-                                    onChange={(e) => handleSimpleChange(e, 'features')} 
-                                />
-                            </div>
-                        )}
-                        <ToggleSwitch label="Ativar Loja para Clientes" enabled={localSettings.features.storeEnabled} onChange={() => handleToggle('storeEnabled')} />
-                        <ToggleSwitch label="Ativar Plano de Adiantamento" enabled={localSettings.features.advancePaymentPlanEnabled} onChange={() => handleToggle('advancePaymentPlanEnabled')} />
-                        
-                        {localSettings.features.advancePaymentPlanEnabled && (
-                            <div className="pl-8 mt-4 space-y-2">
-                                <div className="space-y-4 pt-4 border-t dark:border-gray-700">
-                                    <h4 className="font-semibold">Textos do Banner Promocional</h4>
-                                     <Input 
-                                        label="Título do Banner" 
-                                        name="advancePaymentTitle" 
-                                        value={localSettings.features.advancePaymentTitle || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
-                                     <Input 
-                                        label="Subtítulo (Plano VIP)" 
-                                        name="advancePaymentSubtitleVIP" 
-                                        value={localSettings.features.advancePaymentSubtitleVIP || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
-                                     <Input 
-                                        label="Subtítulo (Plano Simples)" 
-                                        name="advancePaymentSubtitleSimple" 
-                                        value={localSettings.features.advancePaymentSubtitleSimple || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
-                                </div>
-                                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md text-sm mt-6">
-                                    <p><strong>Status da Adesão:</strong></p>
-                                    <p>{advancePlanUsage.count} de {activeClientsCount} clientes ativos aderiram ({advancePlanUsage.percentage.toFixed(2)}%).</p>
-                                    {advancePlanUsage.percentage >= 10 && (
-                                        <p className="font-bold text-yellow-600 dark:text-yellow-400 mt-2">
-                                            O limite de adesão foi atingido. O plano de adiantamento está indisponível para novas solicitações.
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="space-y-4 pt-4 border-t dark:border-gray-700">
-                                    <h4 className="font-semibold">Opções de Adiantamento com Desconto</h4>
-                                    {localSettings.advancePaymentOptions.map((option, index) => (
-                                        <div key={index} className="flex items-center gap-2">
-                                            <span>Pagar</span>
-                                            <Input label="" type="number" value={option.months} onChange={(e) => handleAdvanceOptionChange(index, 'months', +e.target.value)} containerClassName="mb-0 w-20" />
-                                            <span>meses com</span>
-                                            <Input label="" type="number" value={option.discountPercent} onChange={(e) => handleAdvanceOptionChange(index, 'discountPercent', +e.target.value)} containerClassName="mb-0 w-20" />
-                                            <span>% de desconto</span>
-                                            <Button variant="danger" size="sm" onClick={() => removeAdvanceOption(index)}><TrashIcon className="w-4 h-4"/></Button>
-                                        </div>
-                                    ))}
-                                    <Button variant="secondary" size="sm" onClick={addAdvanceOption}>Adicionar Opção</Button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* My Account */}
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-                    <h3 className="text-xl font-semibold mb-4">Minha Conta</h3>
-                     <form onSubmit={handlePasswordChange} className="space-y-4">
-                        <h4 className="font-semibold">Alterar Senha</h4>
-                        <div className="grid md:grid-cols-3 gap-4 items-end">
-                             <Input label="Nova Senha" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} containerClassName="mb-0" />
-                             <Input label="Confirmar Nova Senha" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} containerClassName="mb-0" />
-                             <Button type="submit" isLoading={isSavingPassword}>Salvar Nova Senha</Button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            {isPriceChangeModalOpen && (
-                <Modal
-                    isOpen={isPriceChangeModalOpen}
-                    onClose={() => setIsPriceChangeModalOpen(false)}
-                    title="Confirmar Alteração de Preço"
-                    size="lg"
-                    footer={
-                        <>
-                            <Button variant="secondary" onClick={() => setIsPriceChangeModalOpen(false)}>Cancelar</Button>
-                            <Button onClick={handleConfirmPriceChange} isLoading={isSaving}>Agendar Alteração</Button>
-                        </>
-                    }
-                >
-                    <p>Você está prestes a agendar uma alteração nos preços.</p>
-                    <p className="font-semibold my-2">Os novos valores entrarão em vigor em <strong>{effectiveDate?.toLocaleDateString('pt-BR')}</strong>.</p>
-                    <p>A alteração afetará os seguintes <strong>{affectedClientsPreview.length}</strong> clientes:</p>
-                    <div className="mt-2 p-2 border rounded-md max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-700">
-                        {affectedClientsPreview.length > 0 ? (
-                            <ul className="list-disc list-inside">
-                                {affectedClientsPreview.map(c => <li key={c.id}>{c.name}</li>)}
-                            </ul>
-                        ) : (
-                            <p>Nenhum cliente será afetado por esta mudança no momento.</p>
-                        )}
-                    </div>
-                    <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                        Clientes do Plano Simples e clientes VIP com mensalidades a vencer nos próximos 30 dias são afetados. Clientes VIP com planos de fidelidade ativos e com pagamentos em dia não serão afetados até o fim de seus respectivos planos.
-                    </p>
-                </Modal>
-            )}
-
-            {pendingChange && viewAffectedClientsModalOpen && (
-                <Modal
-                    isOpen={viewAffectedClientsModalOpen}
-                    onClose={() => setViewAffectedClientsModalOpen(false)}
-                    title="Clientes Afetados pela Mudança Agendada"
-                    size="lg"
-                    footer={<Button onClick={() => setViewAffectedClientsModalOpen(false)}>Fechar</Button>}
-                >
-                    <p>A alteração de preço agendada para <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong> afetará os seguintes clientes:</p>
-                    <div className="mt-2 p-2 border rounded-md max-h-60 overflow-y-auto bg-gray-50 dark:bg-gray-700">
-                        <ul className="list-disc list-inside">
-                            {pendingChange.affectedClients.map(c => <li key={c.id}>{c.name}</li>)}
-                        </ul>
-                    </div>
-                </Modal>
-            )}
-
-        </div>
-    );
 };
 
 const RecessManager = ({ appContext }: { appContext: AppContextType }) => {
@@ -909,5 +445,562 @@ const FidelityPlanEditor = ({ localSettings, setLocalSettings }: any) => {
     );
 };
 
+const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) => {
+    const { settings, loading, updateSettings, showNotification, advancePlanUsage, clients, pendingPriceChanges, schedulePriceChange } = appContext;
+    const { changePassword } = authContext;
+    const [localSettings, setLocalSettings] = useState<Settings | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [shouldRemoveLogo, setShouldRemoveLogo] = useState(false);
+    const [isLogoBuilderOpen, setIsLogoBuilderOpen] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
+
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+    // State for price change confirmation modal
+    const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState(false);
+    const [affectedClientsPreview, setAffectedClientsPreview] = useState<AffectedClientPreview[]>([]);
+    const [effectiveDate, setEffectiveDate] = useState<Date | null>(null);
+    const [viewAffectedClientsModalOpen, setViewAffectedClientsModalOpen] = useState(false);
+
+    const pendingChange = pendingPriceChanges.find(c => c.status === 'pending');
+
+    useEffect(() => {
+        if (settings) {
+            setLocalSettings(JSON.parse(JSON.stringify(settings)));
+            setLogoPreview(settings.logoUrl || null);
+        }
+    }, [settings]);
+
+    if (loading.settings || loading.pendingPriceChanges || !localSettings) {
+        return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
+    }
+
+    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing') => {
+        const { name, value, type } = e.target;
+        const finalValue = type === 'number' ? parseFloat(value) || 0 : value;
+        
+        setLocalSettings(prev => {
+            if (!prev) return null;
+            if (section) {
+                const sectionKey = section as keyof Settings;
+                return {
+                    ...prev,
+                    [sectionKey]: {
+                        ...(prev[sectionKey] as any),
+                        [name]: finalValue,
+                    }
+                }
+            }
+            return {...prev, [name]: finalValue };
+        });
+    };
+    
+    const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        let finalValue = value;
+        if (name === 'zip') {
+            finalValue = value
+                .replace(/\D/g, '')
+                .replace(/(\d{5})(\d)/, '$1-$2')
+                .slice(0, 9);
+        }
+        setLocalSettings(prev => {
+            if (!prev) return null;
+            return {
+                ...prev!,
+                baseAddress: {
+                    ...prev!.baseAddress,
+                    [name]: finalValue,
+                },
+            };
+        });
+    };
+
+    const handleToggle = (feature: keyof Settings['features']) => {
+        setLocalSettings(prev => ({
+            ...prev!,
+            features: {
+                ...prev!.features,
+                [feature]: !prev!.features[feature]
+            }
+        }));
+    };
+    
+     const handleTierChange = (index: number, field: 'upTo' | 'price', value: number) => {
+        const newTiers = [...localSettings.pricing.volumeTiers];
+        newTiers[index][field] = value;
+        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
+    };
+
+    const addTier = () => {
+        const newTiers = [...localSettings.pricing.volumeTiers, {upTo: 0, price: 0}];
+        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
+    };
+
+    const removeTier = (index: number) => {
+        const newTiers = localSettings.pricing.volumeTiers.filter((_, i) => i !== index);
+        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
+    };
+    
+    const handleFidelityPlanChange = (index: number, field: keyof Omit<FidelityPlan, 'id'>, value: number) => {
+        const newPlans = [...localSettings.fidelityPlans];
+        newPlans[index][field] = value;
+        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    const addFidelityPlan = () => {
+        const newPlan = { id: Date.now().toString(), months: 0, discountPercent: 0 };
+        const newPlans = [...localSettings.fidelityPlans, newPlan];
+        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    const removeFidelityPlan = (index: number) => {
+        const newPlans = localSettings.fidelityPlans.filter((_, i) => i !== index);
+        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
+    };
+
+    const handleAdvanceOptionChange = (index: number, field: keyof AdvancePaymentOption, value: number) => {
+        const newOptions = [...localSettings.advancePaymentOptions];
+        newOptions[index][field] = value;
+        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
+    };
+
+    const addAdvanceOption = () => {
+        const newOptions = [...localSettings.advancePaymentOptions, { months: 0, discountPercent: 0 }];
+        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
+    };
+
+    const removeAdvanceOption = (index: number) => {
+        const newOptions = localSettings.advancePaymentOptions.filter((_, i) => i !== index);
+        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
+    };
+    
+    const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setLogoFile(file);
+            setShouldRemoveLogo(false);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setLogoPreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleRemoveLogo = () => {
+        setShouldRemoveLogo(true);
+        setLogoFile(null);
+        setLogoPreview(null);
+        setLocalSettings(prev => ({ ...prev!, logoUrl: undefined }));
+    };
+
+    const handleGeneratedLogo = (imageFile: File) => {
+        setLogoFile(imageFile);
+        setShouldRemoveLogo(false);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setLogoPreview(reader.result as string);
+        };
+        reader.readAsDataURL(imageFile);
+        setIsLogoBuilderOpen(false);
+        showNotification("Logo gerada! Clique em 'Salvar Alterações' para aplicá-la.", 'info');
+    };
+
+
+    const handleSave = async () => {
+        if (!settings) return;
+        setIsSaving(true);
+        setUploadProgress(logoFile ? 0 : null);
+        try {
+            const hasPriceChanged = JSON.stringify(localSettings.pricing) !== JSON.stringify(settings.pricing);
+
+            const { pricing, ...otherSettings } = localSettings;
+
+            await updateSettings(
+                otherSettings, 
+                logoFile || undefined, 
+                shouldRemoveLogo,
+                (progress) => setUploadProgress(progress)
+            );
+            
+            setLogoFile(null);
+            setShouldRemoveLogo(false);
+
+            if (hasPriceChanged) {
+                if (pendingChange) {
+                    showNotification('Já existe uma alteração de preço agendada. Aguarde a aplicação para agendar uma nova.', 'error');
+                    setLocalSettings(prev => ({ ...prev!, pricing: settings.pricing })); // Revert local changes
+                    return;
+                }
+
+                const thirtyDaysFromNow = new Date();
+                thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+                const affected = clients.filter(c => {
+                    if (c.clientStatus !== 'Ativo') return false;
+                    if (c.plan === 'Simples') return true;
+                    if (c.plan === 'VIP') {
+                        const dueDate = new Date(c.payment.dueDate);
+                        return dueDate <= thirtyDaysFromNow;
+                    }
+                    return false;
+                }).map(c => ({ id: c.id, name: c.name }));
+                
+                setAffectedClientsPreview(affected);
+                setEffectiveDate(thirtyDaysFromNow);
+                setIsPriceChangeModalOpen(true);
+            } else {
+                showNotification('Configurações salvas com sucesso!', 'success');
+            }
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao salvar configurações.', 'error');
+        } finally {
+            setIsSaving(false);
+            setUploadProgress(null);
+        }
+    };
+
+    const handleConfirmPriceChange = async () => {
+        setIsSaving(true);
+        try {
+            await schedulePriceChange(localSettings.pricing, affectedClientsPreview);
+            showNotification('Alteração de preço agendada com sucesso!', 'success');
+            setIsPriceChangeModalOpen(false);
+        } catch (error: any) {
+             showNotification(error.message || 'Erro ao agendar alteração de preço.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handlePasswordChange = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newPassword !== confirmPassword) {
+            showNotification('As senhas não coincidem.', 'error');
+            return;
+        }
+        if (newPassword.length < 6) {
+            showNotification('A senha precisa ter no mínimo 6 caracteres.', 'error');
+            return;
+        }
+        setIsSavingPassword(true);
+        try {
+            await changePassword(newPassword);
+            showNotification('Senha alterada com sucesso!', 'success');
+            setNewPassword('');
+            setConfirmPassword('');
+        } catch(error: any) {
+            showNotification(error.message || 'Erro ao alterar a senha.', 'error');
+        } finally {
+            setIsSavingPassword(false);
+        }
+    };
+    
+    const activeClientsCount = clients.filter(c => c.clientStatus === 'Ativo').length;
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold">Configurações Gerais</h2>
+                <div>
+                    <Button onClick={handleSave} isLoading={isSaving}>Salvar Alterações</Button>
+                </div>
+            </div>
+
+            {isSaving && uploadProgress !== null && (
+                <div className="mb-4">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                        <div 
+                            className="bg-primary-600 h-2.5 rounded-full transition-all duration-300" 
+                            style={{ width: `${uploadProgress}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        {logoFile ? `Enviando logo... ${Math.round(uploadProgress)}%` : 'Salvando...'}
+                    </p>
+                </div>
+            )}
+
+            {pendingChange && (
+                <div className="p-4 mb-6 bg-blue-100 dark:bg-blue-900/30 border-l-4 border-blue-500 text-blue-800 dark:text-blue-200 rounded-md">
+                    <div className="flex items-center">
+                        <CalendarDaysIcon className="w-6 h-6 mr-3" />
+                        <div>
+                            <p className="font-bold">Alteração de Preço Agendada</p>
+                            <p>Novos preços entrarão em vigor em: <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong>.</p>
+                            <button onClick={() => setViewAffectedClientsModalOpen(true)} className="text-sm text-blue-600 dark:text-blue-300 hover:underline">
+                                Ver {pendingChange.affectedClients.length} cliente(s) afetado(s)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-8">
+                {/* Company Info */}
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <h3 className="text-xl font-semibold mb-4">Identidade Visual e Informações</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <Input label="Nome da Empresa (para painéis)" name="companyName" value={localSettings.companyName} onChange={(e) => handleSimpleChange(e)} />
+                            <Input label="Título Principal (Tela Inicial)" name="mainTitle" value={localSettings.mainTitle || ''} onChange={(e) => handleSimpleChange(e)} />
+                            <Input label="Subtítulo (Tela Inicial)" name="mainSubtitle" value={localSettings.mainSubtitle || ''} onChange={(e) => handleSimpleChange(e)} />
+                            <Input label="Chave PIX Padrão" name="pixKey" value={localSettings.pixKey} onChange={(e) => handleSimpleChange(e)} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Logomarca da Empresa
+                            </label>
+                            {logoPreview && (
+                                <img src={logoPreview} alt="Preview da logo" className="h-20 mb-2 border p-1 rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600"/>
+                            )}
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <Button variant="secondary" size="sm" onClick={() => setIsLogoBuilderOpen(true)}>
+                                        <WrenchScrewdriverIcon className="w-4 h-4 mr-1" />
+                                        Criar Logo
+                                    </Button>
+                                    <Input name="logo-upload" label="" type="file" accept="image/png, image/jpeg" onChange={handleLogoFileChange} containerClassName="flex-grow mb-0" />
+                                    {logoPreview && (
+                                        <Button variant="danger" size="sm" onClick={handleRemoveLogo} title="Remover Logo">
+                                            <TrashIcon className="w-4 h-4" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <fieldset className="mt-4 border p-4 rounded-md dark:border-gray-600">
+                        <legend className="px-2 font-semibold">Endereço da Empresa</legend>
+                        <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 mt-2">
+                            <Input
+                                containerClassName="sm:col-span-2"
+                                label="CEP"
+                                name="zip"
+                                value={localSettings.baseAddress.zip}
+                                onChange={handleAddressChange}
+                                placeholder="00000-000"
+                                pattern="[0-9]{5}-[0-9]{3}"
+                                title="Formato do CEP: 12345-678"
+                                maxLength={9}
+                            />
+                            <Input containerClassName="sm:col-span-4" label="Rua" name="street" value={localSettings.baseAddress.street} onChange={handleAddressChange} />
+                            <Input containerClassName="sm:col-span-2" label="Número" name="number" value={localSettings.baseAddress.number} onChange={handleAddressChange} />
+                            <Input containerClassName="sm:col-span-4" label="Bairro" name="neighborhood" value={localSettings.baseAddress.neighborhood} onChange={handleAddressChange} />
+                            <Input containerClassName="sm:col-span-4" label="Cidade" name="city" value={localSettings.baseAddress.city} onChange={handleAddressChange} />
+                            <Input containerClassName="sm:col-span-2" label="UF" name="state" value={localSettings.baseAddress.state} onChange={handleAddressChange} maxLength={2} />
+                        </div>
+                    </fieldset>
+                </div>
+                
+                {/* Bank Management */}
+                <BankManager appContext={appContext} />
+
+                {/* Recess Management */}
+                <RecessManager appContext={appContext} />
+
+                {/* User Management */}
+                <UserManager appContext={appContext} />
+
+                 {/* Automations */}
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <h3 className="text-xl font-semibold mb-4">Automações</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <Input 
+                            label="Gerar sugestão de reposição quando estoque for menor ou igual a (unidades)" 
+                            name="replenishmentStockThreshold" 
+                            type="number" 
+                            value={localSettings.automation.replenishmentStockThreshold} 
+                            onChange={(e) => handleSimpleChange(e, 'automation')} 
+                        />
+                    </div>
+                </div>
+
+                {/* Pricing */}
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow relative">
+                     {pendingChange && (
+                        <div className="absolute inset-0 bg-gray-400/30 dark:bg-gray-900/50 flex items-center justify-center z-10 rounded-lg">
+                            <span className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-md font-semibold shadow-lg">Bloqueado até a aplicação da mudança agendada.</span>
+                        </div>
+                    )}
+                    <fieldset disabled={!!pendingChange}>
+                        <h3 className="text-xl font-semibold mb-4">Precificação</h3>
+                        <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
+                            <strong>Atenção:</strong> Alterar estes valores agendará uma mudança de preço para os clientes aplicáveis, que entrará em vigor em 30 dias.
+                        </p>
+                        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                            <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                            <Input label="Taxa Água de Poço" name="wellWaterFee" type="number" value={localSettings.pricing.wellWaterFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                            <Input label="Taxa de Produtos" name="productsFee" type="number" value={localSettings.pricing.productsFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                            <Input label="Taxa Piscina de Festa" name="partyPoolFee" type="number" value={localSettings.pricing.partyPoolFee} onChange={(e) => handleSimpleChange(e, 'pricing')} />
+                        </div>
+                        <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
+                        {localSettings.pricing.volumeTiers.map((tier, index) => (
+                            <div key={index} className="flex items-center gap-2 mb-2">
+                            <span>Até</span>
+                            <Input label="" type="number" value={tier.upTo} onChange={(e) => handleTierChange(index, 'upTo', +e.target.value)} containerClassName="mb-0" />
+                            <span>litros, custa R$</span>
+                            <Input label="" type="number" value={tier.price} onChange={(e) => handleTierChange(index, 'price', +e.target.value)} containerClassName="mb-0" />
+                            <Button variant="danger" size="sm" onClick={() => removeTier(index)}><TrashIcon className="w-4 h-4"/></Button>
+                            </div>
+                        ))}
+                        <Button variant="secondary" size="sm" onClick={addTier}>Adicionar Faixa</Button>
+                    </fieldset>
+                </div>
+
+                {/* Plans */}
+                <div className="grid md:grid-cols-2 gap-8">
+                    <PlanEditor title="Plano Simples" planKey="simple" plan={localSettings.plans.simple} setLocalSettings={setLocalSettings} />
+                    <FidelityPlanEditor localSettings={localSettings} setLocalSettings={setLocalSettings} />
+                </div>
+
+                {/* Features */}
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <h3 className="text-xl font-semibold mb-4">Gerenciamento de Funcionalidades</h3>
+                    <div className="space-y-4">
+                        <ToggleSwitch label="Ativar Plano VIP" enabled={localSettings.features.vipPlanEnabled} onChange={() => handleToggle('vipPlanEnabled')} />
+                        {!localSettings.features.vipPlanEnabled && (
+                            <div className="pl-8 mt-2">
+                                <Input 
+                                    label="Mensagem para Plano VIP desativado" 
+                                    name="vipPlanDisabledMessage" 
+                                    value={localSettings.features.vipPlanDisabledMessage || ''} 
+                                    onChange={(e) => handleSimpleChange(e, 'features')} 
+                                />
+                            </div>
+                        )}
+                        <ToggleSwitch label="Ativar Loja para Clientes" enabled={localSettings.features.storeEnabled} onChange={() => handleToggle('storeEnabled')} />
+                        <ToggleSwitch label="Ativar Plano de Adiantamento" enabled={localSettings.features.advancePaymentPlanEnabled} onChange={() => handleToggle('advancePaymentPlanEnabled')} />
+                        
+                        {localSettings.features.advancePaymentPlanEnabled && (
+                            <div className="pl-8 mt-4 space-y-2">
+                                <div className="space-y-4 pt-4 border-t dark:border-gray-700">
+                                    <h4 className="font-semibold">Textos do Banner Promocional</h4>
+                                     <Input 
+                                        label="Título do Banner" 
+                                        name="advancePaymentTitle" 
+                                        value={localSettings.features.advancePaymentTitle || ''} 
+                                        onChange={(e) => handleSimpleChange(e, 'features')} 
+                                    />
+                                     <Input 
+                                        label="Subtítulo (Plano VIP)" 
+                                        name="advancePaymentSubtitleVIP" 
+                                        value={localSettings.features.advancePaymentSubtitleVIP || ''} 
+                                        onChange={(e) => handleSimpleChange(e, 'features')} 
+                                    />
+                                     <Input 
+                                        label="Subtítulo (Plano Simples)" 
+                                        name="advancePaymentSubtitleSimple" 
+                                        value={localSettings.features.advancePaymentSubtitleSimple || ''} 
+                                        onChange={(e) => handleSimpleChange(e, 'features')} 
+                                    />
+                                </div>
+                                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md text-sm mt-6">
+                                    <p><strong>Status da Adesão:</strong></p>
+                                    <p>{advancePlanUsage.count} de {activeClientsCount} clientes ativos aderiram ({advancePlanUsage.percentage.toFixed(2)}%).</p>
+                                    {advancePlanUsage.percentage >= 10 && (
+                                        <p className="font-bold text-yellow-600 dark:text-yellow-400 mt-2">
+                                            O limite de adesão foi atingido. O plano de adiantamento está indisponível para novas solicitações.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="space-y-4 pt-4 border-t dark:border-gray-700">
+                                    <h4 className="font-semibold">Opções de Adiantamento com Desconto</h4>
+                                    {localSettings.advancePaymentOptions.map((option, index) => (
+                                        <div key={index} className="flex items-center gap-2">
+                                            <span>Pagar</span>
+                                            <Input label="" type="number" value={option.months} onChange={(e) => handleAdvanceOptionChange(index, 'months', +e.target.value)} containerClassName="mb-0 w-20" />
+                                            <span>meses com</span>
+                                            <Input label="" type="number" value={option.discountPercent} onChange={(e) => handleAdvanceOptionChange(index, 'discountPercent', +e.target.value)} containerClassName="mb-0 w-20" />
+                                            <span>% de desconto</span>
+                                            <Button variant="danger" size="sm" onClick={() => removeAdvanceOption(index)}><TrashIcon className="w-4 h-4"/></Button>
+                                        </div>
+                                    ))}
+                                    <Button variant="secondary" size="sm" onClick={addAdvanceOption}>Adicionar Opção</Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* My Account */}
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <h3 className="text-xl font-semibold mb-4">Minha Conta</h3>
+                     <form onSubmit={handlePasswordChange} className="space-y-4">
+                        <h4 className="font-semibold">Alterar Senha</h4>
+                        <div className="grid md:grid-cols-3 gap-4 items-end">
+                             <Input label="Nova Senha" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} containerClassName="mb-0" />
+                             <Input label="Confirmar Nova Senha" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} containerClassName="mb-0" />
+                             <Button type="submit" isLoading={isSavingPassword}>Salvar Nova Senha</Button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <LogoBuilder 
+                isOpen={isLogoBuilderOpen}
+                onClose={() => setIsLogoBuilderOpen(false)}
+                companyName={localSettings.companyName}
+                onLogoGenerated={handleGeneratedLogo}
+            />
+
+            {isPriceChangeModalOpen && (
+                <Modal
+                    isOpen={isPriceChangeModalOpen}
+                    onClose={() => setIsPriceChangeModalOpen(false)}
+                    title="Confirmar Alteração de Preço"
+                    size="lg"
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setIsPriceChangeModalOpen(false)}>Cancelar</Button>
+                            <Button onClick={handleConfirmPriceChange} isLoading={isSaving}>Agendar Alteração</Button>
+                        </>
+                    }
+                >
+                    <p>Você está prestes a agendar uma alteração nos preços.</p>
+                    <p className="font-semibold my-2">Os novos valores entrarão em vigor em <strong>{effectiveDate?.toLocaleDateString('pt-BR')}</strong>.</p>
+                    <p>A alteração afetará os seguintes <strong>{affectedClientsPreview.length}</strong> clientes:</p>
+                    <div className="mt-2 p-2 border rounded-md max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-700">
+                        {affectedClientsPreview.length > 0 ? (
+                            <ul className="list-disc list-inside">
+                                {affectedClientsPreview.map(c => <li key={c.id}>{c.name}</li>)}
+                            </ul>
+                        ) : (
+                            <p>Nenhum cliente será afetado por esta mudança no momento.</p>
+                        )}
+                    </div>
+                    <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+                        Clientes do Plano Simples e clientes VIP com mensalidades a vencer nos próximos 30 dias são afetados. Clientes VIP com planos de fidelidade ativos e com pagamentos em dia não serão afetados até o fim de seus respectivos planos.
+                    </p>
+                </Modal>
+            )}
+
+            {pendingChange && viewAffectedClientsModalOpen && (
+                <Modal
+                    isOpen={viewAffectedClientsModalOpen}
+                    onClose={() => setViewAffectedClientsModalOpen(false)}
+                    title="Clientes Afetados pela Mudança Agendada"
+                    size="lg"
+                    footer={<Button onClick={() => setViewAffectedClientsModalOpen(false)}>Fechar</Button>}
+                >
+                    <p>A alteração de preço agendada para <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong> afetará os seguintes clientes:</p>
+                    <div className="mt-2 p-2 border rounded-md max-h-60 overflow-y-auto bg-gray-50 dark:bg-gray-700">
+                        <ul className="list-disc list-inside">
+                            {pendingChange.affectedClients.map(c => <li key={c.id}>{c.name}</li>)}
+                        </ul>
+                    </div>
+                </Modal>
+            )}
+
+        </div>
+    );
+};
 
 export default SettingsView;

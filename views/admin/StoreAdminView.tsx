@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppContextType, Product, Order, OrderStatus, ReplenishmentQuote } from '../../types';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
@@ -7,10 +8,7 @@ import { Spinner } from '../../components/Spinner';
 import { EditIcon, TrashIcon, PlusIcon, CheckIcon, XMarkIcon } from '../../constants';
 import { Select } from '../../components/Select';
 import { Card, CardContent, CardHeader } from '../../components/Card';
-
-interface StoreAdminViewProps {
-    appContext: AppContextType;
-}
+import { db } from '../../firebase'; // Import Firestore instance for paginated queries
 
 // Helper function to safely convert Firestore timestamps or strings to Date objects
 const toDate = (timestamp: any): Date | null => {
@@ -23,6 +21,10 @@ const toDate = (timestamp: any): Date | null => {
     if (timestamp.seconds) return new Date(timestamp.seconds * 1000);
     return null;
 };
+
+interface StoreAdminViewProps {
+    appContext: AppContextType;
+}
 
 const StoreAdminView: React.FC<StoreAdminViewProps> = ({ appContext }) => {
     const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'replenishment'>('products');
@@ -134,12 +136,69 @@ const ReplenishmentManagement = ({ appContext }: { appContext: AppContextType })
 };
 
 
+const PRODUCTS_PER_PAGE = 8;
+
 const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
-    const { products, loading, saveProduct, deleteProduct, showNotification } = appContext;
+    const { saveProduct, deleteProduct, showNotification } = appContext;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | Omit<Product, 'id'> | null>(null);
     const [productImageFile, setProductImageFile] = useState<File | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    // State for infinite scroll
+    const [products, setProducts] = useState<Product[]>([]);
+    const [lastVisible, setLastVisible] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [hasMore, setHasMore] = useState(true);
+    
+    const observer = useRef<IntersectionObserver | null>(null);
+
+    const fetchProducts = useCallback(async (isInitial = false) => {
+        if (loading && !isInitial) return;
+        setLoading(true);
+
+        try {
+            let query = db.collection('products').orderBy('name').limit(PRODUCTS_PER_PAGE);
+
+            if (lastVisible && !isInitial) {
+                query = query.startAfter(lastVisible);
+            }
+
+            const documentSnapshots = await query.get();
+            const newProducts = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+            const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length - 1];
+            
+            setProducts(prev => isInitial ? newProducts : [...prev, ...newProducts]);
+            setLastVisible(lastDoc);
+
+            if (documentSnapshots.docs.length < PRODUCTS_PER_PAGE) {
+                setHasMore(false);
+            }
+        } catch (error) {
+            console.error("Error fetching products:", error);
+            showNotification("Erro ao carregar produtos.", 'error');
+        } finally {
+            setLoading(false);
+        }
+    }, [lastVisible, loading, showNotification]);
+
+    useEffect(() => {
+        // Initial fetch
+        setHasMore(true);
+        setLastVisible(null);
+        fetchProducts(true);
+    }, []);
+
+    const loaderRef = useCallback(node => {
+        if (loading) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore) {
+                fetchProducts();
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [loading, hasMore, fetchProducts]);
 
     const handleOpenModal = (product: Product | null = null) => {
         if (product) {
@@ -163,6 +222,11 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
         try {
             await saveProduct(selectedProduct, productImageFile || undefined);
             showNotification('Produto salvo com sucesso!', 'success');
+            // Reset and refetch to ensure correct order
+            setProducts([]);
+            setLastVisible(null);
+            setHasMore(true);
+            fetchProducts(true);
             handleCloseModal();
         } catch (error: any) {
             showNotification(error.message || 'Erro ao salvar produto.', 'error');
@@ -175,6 +239,7 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
         if (window.confirm('Tem certeza que deseja excluir este produto?')) {
             try {
                 await deleteProduct(productId);
+                setProducts(prev => prev.filter(p => p.id !== productId));
                 showNotification('Produto excluído com sucesso!', 'success');
             } catch (error: any) {
                 showNotification(error.message || 'Erro ao excluir produto.', 'error');
@@ -190,25 +255,31 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
                     Adicionar Produto
                 </Button>
             </div>
-            {loading.products ? <Spinner /> : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {products.map(product => (
-                        <div key={product.id} className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-                            <img src={product.imageUrl} alt={product.name} className="h-48 w-full object-cover" />
-                            <div className="p-4">
-                                <h3 className="font-bold text-lg">{product.name}</h3>
-                                <p className="text-gray-600 dark:text-gray-400 text-sm">{product.description}</p>
-                                <p className="text-primary-500 font-bold mt-2">R$ {product.price.toFixed(2)}</p>
-                                <p className="text-sm">Estoque: {product.stock}</p>
-                            </div>
-                            <div className="p-2 bg-gray-50 dark:bg-gray-700 flex justify-end gap-2">
-                                <Button size="sm" variant="secondary" onClick={() => handleOpenModal(product)}><EditIcon className="w-4 h-4" /></Button>
-                                <Button size="sm" variant="danger" onClick={() => handleDelete(product.id)}><TrashIcon className="w-4 h-4" /></Button>
-                            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {products.map(product => (
+                    <div key={product.id} className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+                        <img src={product.imageUrl} alt={product.name} className="h-48 w-full object-cover" />
+                        <div className="p-4">
+                            <h3 className="font-bold text-lg">{product.name}</h3>
+                            <p className="text-gray-600 dark:text-gray-400 text-sm">{product.description}</p>
+                            <p className="text-primary-500 font-bold mt-2">R$ {product.price.toFixed(2)}</p>
+                            <p className="text-sm">Estoque: {product.stock}</p>
                         </div>
-                    ))}
-                </div>
-            )}
+                        <div className="p-2 bg-gray-50 dark:bg-gray-700 flex justify-end gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => handleOpenModal(product)}><EditIcon className="w-4 h-4" /></Button>
+                            <Button size="sm" variant="danger" onClick={() => handleDelete(product.id)}><TrashIcon className="w-4 h-4" /></Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            
+            <div ref={loaderRef} className="flex justify-center items-center h-24">
+                {loading && <Spinner />}
+                {!hasMore && products.length > 0 && <p className="text-gray-500">Fim dos resultados.</p>}
+                {!loading && products.length === 0 && <p className="text-gray-500">Nenhum produto encontrado.</p>}
+            </div>
+
              {isModalOpen && selectedProduct && (
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in selectedProduct ? 'Editar Produto' : 'Adicionar Produto'}>
                     <ProductForm product={selectedProduct} setProduct={setSelectedProduct} onFileChange={setProductImageFile} />
