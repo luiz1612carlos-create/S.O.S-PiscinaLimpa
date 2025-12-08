@@ -20,7 +20,14 @@ const TechnicianLayout: React.FC<TechnicianLayoutProps> = ({ authContext, appCon
             <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-10">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
                      {appContext.settings?.logoUrl ? (
-                        <img src={appContext.settings.logoUrl} alt={appContext.settings.companyName} className="h-10" />
+                        <div className="h-12 w-32">
+                            <img 
+                                src={appContext.settings.logoUrl} 
+                                alt={appContext.settings.companyName} 
+                                className="w-full h-full"
+                                style={{ objectFit: appContext.settings?.logoObjectFit || 'contain' }} 
+                            />
+                        </div>
                     ) : (
                         <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Painel do Técnico'}</h1>
                     )}

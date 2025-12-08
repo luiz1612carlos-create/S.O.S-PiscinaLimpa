@@ -1,7 +1,5 @@
 
 
-
-
 import React, { useState } from 'react';
 import { AuthContextType, AppContextType, AdminView } from '../../types';
 import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon, ArchiveBoxIcon, SparklesIcon } from '../../constants';
@@ -58,9 +56,16 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
 
     const SidebarContent = () => (
         <>
-            <div className="p-4 border-b dark:border-gray-700 h-16 flex items-center">
+            <div className="p-4 border-b dark:border-gray-700 h-20 flex items-center">
                 {appContext.settings?.logoUrl ? (
-                    <img src={appContext.settings.logoUrl} alt={appContext.settings.companyName} className="h-10 max-w-full" />
+                    <div className="h-14 w-full">
+                        <img
+                            src={appContext.settings.logoUrl}
+                            alt={appContext.settings.companyName}
+                            className="w-full h-full"
+                            style={{ objectFit: appContext.settings?.logoObjectFit || 'contain' }}
+                        />
+                    </div>
                 ) : (
                     <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Piscina Limpa'}</h1>
                 )}

@@ -28,6 +28,8 @@ export const LogoBuilder: React.FC<LogoBuilderProps> = ({ isOpen, onClose, compa
     const [font, setFont] = useState('font-sans');
     const [background, setBackground] = useState<'none' | 'circle' | 'square'>('none');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [iconWidth, setIconWidth] = useState(64);
+    const [iconHeight, setIconHeight] = useState(64);
 
     const previewRef = useRef<HTMLDivElement>(null);
 
@@ -41,15 +43,22 @@ export const LogoBuilder: React.FC<LogoBuilderProps> = ({ isOpen, onClose, compa
                 backgroundColor: null, // Transparent background
                 scale: 2, // Higher resolution
             });
-            canvas.toBlob((blob) => {
-                if (blob) {
-                    const file = new File([blob], 'logo.png', { type: 'image/png' });
-                    onLogoGenerated(file);
-                }
-                setIsGenerating(false);
-            }, 'image/png');
+
+            // Promisify canvas.toBlob for robust error handling
+            const blob = await new Promise<Blob | null>(resolve => {
+                canvas.toBlob(resolve, 'image/png');
+            });
+
+            if (!blob) {
+                throw new Error("Falha ao gerar a imagem. Tente novamente.");
+            }
+
+            const file = new File([blob], 'logo.png', { type: 'image/png' });
+            onLogoGenerated(file);
         } catch (error) {
             console.error("Error generating logo:", error);
+            // You could show a notification to the user here.
+        } finally {
             setIsGenerating(false);
         }
     };
@@ -84,7 +93,7 @@ export const LogoBuilder: React.FC<LogoBuilderProps> = ({ isOpen, onClose, compa
                     <Input label="Cor do Ícone" type="color" value={iconColor} onChange={(e) => setIconColor(e.target.value)} />
                     <Input label="Cor do Texto" type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} />
                     
-                    <h3 className="font-semibold">4. Layout</h3>
+                    <h3 className="font-semibold">4. Layout e Dimensões</h3>
                     <Select
                         label="Layout"
                         value={layout}
@@ -97,6 +106,36 @@ export const LogoBuilder: React.FC<LogoBuilderProps> = ({ isOpen, onClose, compa
                         onChange={(e) => setBackground(e.target.value as any)}
                         options={[{value: 'none', label: 'Transparente'}, {value: 'circle', label: 'Círculo'}, {value: 'square', label: 'Quadrado'}]}
                     />
+                    <div>
+                        <label htmlFor="iconWidth" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Largura do Ícone: <span className="font-bold">{iconWidth}px</span>
+                        </label>
+                        <input
+                            id="iconWidth"
+                            type="range"
+                            min="32"
+                            max="128"
+                            step="2"
+                            value={iconWidth}
+                            onChange={(e) => setIconWidth(Number(e.target.value))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="iconHeight" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Altura do Ícone: <span className="font-bold">{iconHeight}px</span>
+                        </label>
+                        <input
+                            id="iconHeight"
+                            type="range"
+                            min="32"
+                            max="128"
+                            step="2"
+                            value={iconHeight}
+                            onChange={(e) => setIconHeight(Number(e.target.value))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                        />
+                    </div>
                 </div>
 
                 {/* Preview */}
@@ -117,8 +156,11 @@ export const LogoBuilder: React.FC<LogoBuilderProps> = ({ isOpen, onClose, compa
                         `}
                     >
                         <SelectedIcon
-                            className="w-16 h-16"
-                            style={{ color: iconColor }}
+                            style={{
+                                color: iconColor,
+                                width: `${iconWidth}px`,
+                                height: `${iconHeight}px`,
+                            }}
                         />
                         <h2
                             className="text-2xl font-bold text-center"

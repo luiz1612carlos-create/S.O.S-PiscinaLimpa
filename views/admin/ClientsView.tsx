@@ -91,7 +91,8 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
     };
 
     const handleDeleteClient = async () => {
-        if (!selectedClient || !window.confirm(`Tem certeza que deseja excluir ${selectedClient.name}? Esta ação é irreversível.`)) return;
+        const confirmationMessage = `Tem certeza que deseja excluir ${selectedClient?.name}?\n\nEsta ação removerá os dados do cliente, mas NÃO a sua conta de login.\n\nPara permitir que este email seja usado em um novo cadastro, você precisará apagar o usuário manualmente no painel do Firebase Authentication.`;
+        if (!selectedClient || !window.confirm(confirmationMessage)) return;
         
         setIsDeleting(true);
         try {

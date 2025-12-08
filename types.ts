@@ -220,6 +220,7 @@ export interface Settings {
     mainTitle: string;
     mainSubtitle: string;
     logoUrl?: string;
+    logoObjectFit?: 'contain' | 'cover' | 'fill' | 'scale-down';
     baseAddress: Address;
     pixKey: string;
     pricing: {

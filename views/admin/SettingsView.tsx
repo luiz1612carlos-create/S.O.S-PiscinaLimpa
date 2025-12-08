@@ -7,6 +7,7 @@ import { ToggleSwitch } from '../../components/ToggleSwitch';
 import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, WrenchScrewdriverIcon } from '../../constants';
 import { Modal } from '../../components/Modal';
 import { LogoBuilder } from '../../components/LogoBuilder';
+import { Select } from '../../components/Select';
 
 // This is a workaround for the no-build-tool environment
 declare const html2canvas: any;
@@ -481,9 +482,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
     }
 
-    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing') => {
+    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing') => {
         const { name, value, type } = e.target;
-        const finalValue = type === 'number' ? parseFloat(value) || 0 : value;
+        
+        let finalValue: any = value;
+        if (e.target.tagName === 'INPUT' && type === 'number') {
+            finalValue = parseFloat(value) || 0;
+        }
         
         setLocalSettings(prev => {
             if (!prev) return null;
@@ -759,9 +764,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                 Logomarca da Empresa
                             </label>
                             {logoPreview && (
-                                <img src={logoPreview} alt="Preview da logo" className="h-20 mb-2 border p-1 rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600"/>
+                                 <div className="h-20 w-48 mb-2 border p-1 rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600 flex items-center justify-center overflow-hidden">
+                                    <img 
+                                        src={logoPreview} 
+                                        alt="Preview da logo" 
+                                        className="w-full h-full"
+                                        style={{ objectFit: localSettings.logoObjectFit }}
+                                    />
+                                </div>
                             )}
-                            <div>
+                            <div className="space-y-2">
                                 <div className="flex items-center gap-2">
                                     <Button variant="secondary" size="sm" onClick={() => setIsLogoBuilderOpen(true)}>
                                         <WrenchScrewdriverIcon className="w-4 h-4 mr-1" />
@@ -774,6 +786,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                         </Button>
                                     )}
                                 </div>
+                                {logoPreview && (
+                                    <Select
+                                        label="Ajuste da Imagem da Logo"
+                                        name="logoObjectFit"
+                                        value={localSettings.logoObjectFit}
+                                        onChange={(e) => handleSimpleChange(e)}
+                                        options={[
+                                            { value: 'contain', label: 'Conter (mostrar imagem inteira)' },
+                                            { value: 'cover', label: 'Preencher (pode cortar)' },
+                                            { value: 'fill', label: 'Esticar (pode distorcer)' },
+                                            { value: 'scale-down', label: 'Reduzir para caber' }
+                                        ]}
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>

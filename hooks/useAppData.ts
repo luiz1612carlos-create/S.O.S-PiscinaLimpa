@@ -36,6 +36,7 @@ const defaultSettings: Settings = {
     mainTitle: "S.O.S Piscina Limpa",
     mainSubtitle: "Compromisso e Qualidade",
     logoUrl: "",
+    logoObjectFit: 'contain',
     baseAddress: {
         street: "Rua Principal",
         number: "123",
@@ -461,18 +462,33 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         const budget = budgetDoc.data() as BudgetQuote;
 
+        // Proactively check if the email is already in use
         try {
-            // Restore Firebase Auth usage
+            const signInMethods = await auth.fetchSignInMethodsForEmail(budget.email);
+            if (signInMethods.length > 0) {
+                throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
+            }
+        } catch (error: any) {
+            // Re-throw our custom error or a generic one
+            if (error.message.startsWith("Já existe uma conta")) {
+                throw error;
+            }
+            console.error("Erro ao verificar e-mail do usuário:", error);
+            throw new Error("Falha ao verificar o e-mail do usuário. Tente novamente.");
+        }
+
+        // If the email is not in use, proceed with creating the new user and client
+        try {
             const userCredential = await auth.createUserWithEmailAndPassword(budget.email, password);
             const newUid = userCredential.user.uid;
 
             const batch = db.batch();
 
             const userDocRef = db.collection('users').doc(newUid);
-            batch.set(userDocRef, { 
-                name: budget.name, 
-                email: budget.email, 
-                role: 'client', 
+            batch.set(userDocRef, {
+                name: budget.name,
+                email: budget.email,
+                role: 'client',
                 uid: newUid,
             });
 
@@ -510,11 +526,13 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         } catch (error: any) {
             console.error("Erro ao aprovar orçamento de novo cliente:", error);
+            // The original Firebase error is often more specific (e.g., weak password)
+            // so we can re-throw it. The email-in-use case is already handled.
             throw error;
         }
     };
     
-    const rejectBudgetQuote = (budgetId: string) => db.collection('pre-budgets').doc(budgetId).update({ status: 'rejected' });
+    const rejectBudgetQuote = (budgetId: string) => db.collection('pre-budgets').doc(budgetId).delete();
     const updateClient = (clientId: string, data: Partial<Client>) => db.collection('clients').doc(clientId).update(data);
     const deleteClient = (clientId: string) => db.collection('clients').doc(clientId).delete();
 

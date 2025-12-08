@@ -72,7 +72,14 @@ const App: React.FC = () => {
                 <div className="w-full max-w-4xl mx-auto">
                     <header className="text-center mb-8">
                         {appData.settings?.logoUrl ? (
-                            <img src={appData.settings.logoUrl} alt={appData.settings.companyName || 'Logo'} className="h-16 mx-auto" />
+                            <div className="h-16 w-48 mx-auto">
+                                <img 
+                                    src={appData.settings.logoUrl} 
+                                    alt={appData.settings.companyName || 'Logo'} 
+                                    className="w-full h-full" 
+                                    style={{ objectFit: appData.settings.logoObjectFit || 'contain' }} 
+                                />
+                            </div>
                         ) : (
                             <h1 className="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-400">{appData.settings?.mainTitle || 'Piscina Limpa'}</h1>
                         )}

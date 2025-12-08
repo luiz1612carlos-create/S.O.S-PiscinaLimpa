@@ -60,7 +60,14 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-4">
                         {appContext.settings?.logoUrl ? (
-                            <img src={appContext.settings.logoUrl} alt={appContext.settings.companyName} className="h-10" />
+                            <div className="h-12 w-32">
+                                <img 
+                                    src={appContext.settings.logoUrl} 
+                                    alt={appContext.settings.companyName} 
+                                    className="w-full h-full"
+                                    style={{ objectFit: appContext.settings?.logoObjectFit || 'contain' }} 
+                                />
+                            </div>
                         ) : (
                             <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Piscina Limpa'}</h1>
                         )}
