@@ -37,6 +37,13 @@ const defaultSettings: Settings = {
     mainSubtitle: "Compromisso e Qualidade",
     logoUrl: "",
     logoObjectFit: 'contain',
+    logoTransforms: {
+        scale: 1,
+        rotate: 0,
+        brightness: 1,
+        contrast: 1,
+        grayscale: 0,
+    },
     baseAddress: {
         street: "Rua Principal",
         number: "123",

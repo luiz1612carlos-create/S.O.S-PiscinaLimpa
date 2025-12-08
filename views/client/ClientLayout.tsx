@@ -39,6 +39,13 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
         { id: 'shop', label: 'Loja', icon: StoreIcon, disabled: !appContext.settings?.features.storeEnabled },
     ];
 
+    const logoTransforms = appContext.settings?.logoTransforms;
+    const logoFilter = [
+        `brightness(${logoTransforms?.brightness || 1})`,
+        `contrast(${logoTransforms?.contrast || 1})`,
+        `grayscale(${logoTransforms?.grayscale || 0})`,
+    ].filter(Boolean).join(' ');
+
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
             {/* Install Banner */}
@@ -60,12 +67,16 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-4">
                         {appContext.settings?.logoUrl ? (
-                            <div className="h-12 w-32">
+                            <div className="h-14 w-32 flex items-center justify-center overflow-hidden">
                                 <img 
                                     src={appContext.settings.logoUrl} 
                                     alt={appContext.settings.companyName} 
-                                    className="w-full h-full"
-                                    style={{ objectFit: appContext.settings?.logoObjectFit || 'contain' }} 
+                                    className="max-w-full max-h-full"
+                                    style={{ 
+                                        objectFit: appContext.settings?.logoObjectFit || 'contain',
+                                        transform: `scale(${logoTransforms?.scale || 1}) rotate(${logoTransforms?.rotate || 0}deg)`,
+                                        filter: logoFilter
+                                    }} 
                                 />
                             </div>
                         ) : (

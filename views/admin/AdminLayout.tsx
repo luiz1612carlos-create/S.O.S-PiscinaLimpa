@@ -54,42 +54,55 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
         }
     };
 
-    const SidebarContent = () => (
-        <>
-            <div className="p-4 border-b dark:border-gray-700 h-20 flex items-center">
-                {appContext.settings?.logoUrl ? (
-                    <div className="h-14 w-full">
-                        <img
-                            src={appContext.settings.logoUrl}
-                            alt={appContext.settings.companyName}
-                            className="w-full h-full"
-                            style={{ objectFit: appContext.settings?.logoObjectFit || 'contain' }}
-                        />
-                    </div>
-                ) : (
-                    <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Piscina Limpa'}</h1>
-                )}
-            </div>
-            <nav className="flex-1 p-4 space-y-2">
-                {menuItems.map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => {
-                            setCurrentView(item.id as AdminView);
-                            setIsSidebarOpen(false); // Close sidebar on mobile after selection
-                        }}
-                        className={`w-full flex items-center p-2 rounded-md transition-colors ${currentView === item.id ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                    >
-                        <item.icon className="w-6 h-6 mr-3" />
-                        <span>{item.label}</span>
-                        {item.count !== undefined && item.count > 0 && (
-                            <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">{item.count}</span>
-                        )}
-                    </button>
-                ))}
-            </nav>
-        </>
-    );
+    const SidebarContent = () => {
+        const logoTransforms = appContext.settings?.logoTransforms;
+        const logoFilter = [
+            `brightness(${logoTransforms?.brightness || 1})`,
+            `contrast(${logoTransforms?.contrast || 1})`,
+            `grayscale(${logoTransforms?.grayscale || 0})`,
+        ].filter(Boolean).join(' ');
+
+        return (
+            <>
+                <div className="p-4 border-b dark:border-gray-700 h-20 flex items-center">
+                    {appContext.settings?.logoUrl ? (
+                        <div className="h-16 w-full flex items-center justify-center overflow-hidden">
+                            <img
+                                src={appContext.settings.logoUrl}
+                                alt={appContext.settings.companyName}
+                                className="max-w-full max-h-full"
+                                style={{
+                                    objectFit: appContext.settings?.logoObjectFit || 'contain',
+                                    transform: `scale(${logoTransforms?.scale || 1}) rotate(${logoTransforms?.rotate || 0}deg)`,
+                                    filter: logoFilter
+                                }}
+                            />
+                        </div>
+                    ) : (
+                        <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">{appContext.settings?.companyName || 'Piscina Limpa'}</h1>
+                    )}
+                </div>
+                <nav className="flex-1 p-4 space-y-2">
+                    {menuItems.map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => {
+                                setCurrentView(item.id as AdminView);
+                                setIsSidebarOpen(false); // Close sidebar on mobile after selection
+                            }}
+                            className={`w-full flex items-center p-2 rounded-md transition-colors ${currentView === item.id ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            <item.icon className="w-6 h-6 mr-3" />
+                            <span>{item.label}</span>
+                            {item.count !== undefined && item.count > 0 && (
+                                <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">{item.count}</span>
+                            )}
+                        </button>
+                    ))}
+                </nav>
+            </>
+        );
+    };
 
     return (
         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">

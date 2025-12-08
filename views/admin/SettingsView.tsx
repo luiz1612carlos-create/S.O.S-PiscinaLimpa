@@ -482,27 +482,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
     }
 
-    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing') => {
+    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing' | 'logoTransforms') => {
         const { name, value, type } = e.target;
         
         let finalValue: any = value;
-        if (e.target.tagName === 'INPUT' && type === 'number') {
+        if (e.target.tagName === 'INPUT' && (type === 'number' || type === 'range')) {
             finalValue = parseFloat(value) || 0;
         }
         
         setLocalSettings(prev => {
             if (!prev) return null;
+            const newState = JSON.parse(JSON.stringify(prev)); // Deep copy
             if (section) {
                 const sectionKey = section as keyof Settings;
-                return {
-                    ...prev,
-                    [sectionKey]: {
-                        ...(prev[sectionKey] as any),
-                        [name]: finalValue,
-                    }
+                 if (!newState[sectionKey]) {
+                    (newState as any)[sectionKey] = {};
                 }
+                (newState[sectionKey] as any)[name] = finalValue;
+                return newState
             }
-            return {...prev, [name]: finalValue };
+            (newState as any)[name] = finalValue;
+            return newState;
         });
     };
     
@@ -764,12 +764,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                 Logomarca da Empresa
                             </label>
                             {logoPreview && (
-                                 <div className="h-20 w-48 mb-2 border p-1 rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600 flex items-center justify-center overflow-hidden">
-                                    <img 
-                                        src={logoPreview} 
-                                        alt="Preview da logo" 
-                                        className="w-full h-full"
-                                        style={{ objectFit: localSettings.logoObjectFit }}
+                                <div className="h-24 w-full mb-2 border p-2 rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600 flex items-center justify-center overflow-hidden">
+                                    <img
+                                        src={logoPreview}
+                                        alt="Preview da logo"
+                                        className="max-w-full max-h-full"
+                                        style={{
+                                            objectFit: localSettings.logoObjectFit,
+                                            transform: `scale(${localSettings.logoTransforms?.scale || 1}) rotate(${localSettings.logoTransforms?.rotate || 0}deg)`,
+                                            filter: `brightness(${localSettings.logoTransforms?.brightness || 1}) contrast(${localSettings.logoTransforms?.contrast || 1}) grayscale(${localSettings.logoTransforms?.grayscale || 0})`,
+                                            transition: 'transform 0.2s ease, filter 0.2s ease',
+                                        }}
                                     />
                                 </div>
                             )}
@@ -787,18 +792,67 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                     )}
                                 </div>
                                 {logoPreview && (
-                                    <Select
-                                        label="Ajuste da Imagem da Logo"
-                                        name="logoObjectFit"
-                                        value={localSettings.logoObjectFit}
-                                        onChange={(e) => handleSimpleChange(e)}
-                                        options={[
-                                            { value: 'contain', label: 'Conter (mostrar imagem inteira)' },
-                                            { value: 'cover', label: 'Preencher (pode cortar)' },
-                                            { value: 'fill', label: 'Esticar (pode distorcer)' },
-                                            { value: 'scale-down', label: 'Reduzir para caber' }
-                                        ]}
-                                    />
+                                    <>
+                                    <div className="mt-4">
+                                        <Select
+                                            label="Ajuste da Imagem da Logo"
+                                            name="logoObjectFit"
+                                            value={localSettings.logoObjectFit}
+                                            onChange={(e) => handleSimpleChange(e)}
+                                            options={[
+                                                { value: 'contain', label: 'Conter (mostrar imagem inteira)' },
+                                                { value: 'cover', label: 'Preencher (pode cortar)' },
+                                                { value: 'fill', label: 'Esticar (pode distorcer)' },
+                                                { value: 'scale-down', label: 'Reduzir para caber' }
+                                            ]}
+                                        />
+                                    </div>
+                                    <div className="mt-4 pt-4 border-t dark:border-gray-600">
+                                        <h4 className="font-semibold mb-2">Ajustes da Imagem</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm">Zoom (Escala): {Number(localSettings.logoTransforms?.scale || 1).toFixed(2)}x</label>
+                                                <input type="range" min="0.5" max="2" step="0.05" name="scale"
+                                                    value={localSettings.logoTransforms?.scale || 1}
+                                                    onChange={(e) => handleSimpleChange(e, 'logoTransforms')}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm">Rotação: {localSettings.logoTransforms?.rotate}°</label>
+                                                <input type="range" min="-180" max="180" step="1" name="rotate"
+                                                    value={localSettings.logoTransforms?.rotate || 0}
+                                                    onChange={(e) => handleSimpleChange(e, 'logoTransforms')}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm">Preto e Branco: {Math.round((localSettings.logoTransforms?.grayscale || 0) * 100)}%</label>
+                                                <input type="range" min="0" max="1" step="0.05" name="grayscale"
+                                                    value={localSettings.logoTransforms?.grayscale || 0}
+                                                    onChange={(e) => handleSimpleChange(e, 'logoTransforms')}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm">Brilho: {Math.round((localSettings.logoTransforms?.brightness || 1) * 100)}%</label>
+                                                <input type="range" min="0" max="2" step="0.05" name="brightness"
+                                                    value={localSettings.logoTransforms?.brightness || 1}
+                                                    onChange={(e) => handleSimpleChange(e, 'logoTransforms')}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm">Contraste: {Math.round((localSettings.logoTransforms?.contrast || 1) * 100)}%</label>
+                                                <input type="range" min="0" max="2" step="0.05" name="contrast"
+                                                    value={localSettings.logoTransforms?.contrast || 1}
+                                                    onChange={(e) => handleSimpleChange(e, 'logoTransforms')}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    </>
                                 )}
                             </div>
                         </div>

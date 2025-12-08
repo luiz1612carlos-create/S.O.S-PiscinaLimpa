@@ -1,3 +1,4 @@
+
 export interface UserData {
     uid: string;
     email: string;
@@ -215,12 +216,21 @@ export interface RecessPeriod {
     endDate: any;   // Firestore Timestamp
 }
 
+export interface LogoTransforms {
+    scale: number;
+    rotate: number;
+    brightness: number;
+    contrast: number;
+    grayscale: number;
+}
+
 export interface Settings {
     companyName: string;
     mainTitle: string;
     mainSubtitle: string;
     logoUrl?: string;
     logoObjectFit?: 'contain' | 'cover' | 'fill' | 'scale-down';
+    logoTransforms?: LogoTransforms;
     baseAddress: Address;
     pixKey: string;
     pricing: {

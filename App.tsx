@@ -11,7 +11,7 @@ import ClientLayout from './views/client/ClientLayout';
 import TechnicianLayout from './views/technician/TechnicianLayout';
 import { Spinner } from './components/Spinner';
 import { Notification } from './components/Notification';
-import { NotificationType } from './types';
+import { NotificationType, Settings } from './types';
 import { MoonIcon, SunIcon } from './constants';
 import SetupView from './views/public/SetupView';
 
@@ -66,18 +66,30 @@ const App: React.FC = () => {
         if (userData?.role === 'client') {
             return <ClientLayout authContext={authContextValue} appContext={appContextValue} />;
         }
+
+        const logoTransforms = appData.settings?.logoTransforms;
+        const logoFilter = [
+            `brightness(${logoTransforms?.brightness || 1})`,
+            `contrast(${logoTransforms?.contrast || 1})`,
+            `grayscale(${logoTransforms?.grayscale || 0})`,
+        ].filter(Boolean).join(' ');
+
         return (
             <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col items-center justify-center p-4">
                 <div className="absolute top-4 right-4"><ThemeToggle /></div>
                 <div className="w-full max-w-4xl mx-auto">
                     <header className="text-center mb-8">
                         {appData.settings?.logoUrl ? (
-                            <div className="h-16 w-48 mx-auto">
+                            <div className="h-24 w-full mx-auto flex items-center justify-center overflow-hidden">
                                 <img 
                                     src={appData.settings.logoUrl} 
                                     alt={appData.settings.companyName || 'Logo'} 
-                                    className="w-full h-full" 
-                                    style={{ objectFit: appData.settings.logoObjectFit || 'contain' }} 
+                                    className="max-w-full max-h-full"
+                                    style={{ 
+                                        objectFit: appData.settings.logoObjectFit || 'contain',
+                                        transform: `scale(${logoTransforms?.scale || 1}) rotate(${logoTransforms?.rotate || 0}deg)`,
+                                        filter: logoFilter
+                                    }} 
                                 />
                             </div>
                         ) : (
