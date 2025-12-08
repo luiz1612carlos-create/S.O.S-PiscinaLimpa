@@ -170,22 +170,34 @@ export const ArchiveBoxIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-export const WrenchScrewdriverIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.471-2.471a2.652 2.652 0 00-3.75-3.75L4.5 13.5V21h7.5l-2.471-2.471a2.652 2.652 0 000-3.75z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 5.25l-2.471 2.471a2.652 2.652 0 01-3.75 0L8.828 2.25 2.25 8.828l5.471 5.471a2.652 2.652 0 003.75 0l2.471-2.471" />
-    </svg>
-);
-
-// List of icons for the Logo Builder
+// FIX: Add missing LOGO_ICON_LIST export
 export const LOGO_ICON_LIST = {
-  SparklesIcon,
-  SunIcon,
-  WeatherSunnyIcon,
-  CheckBadgeIcon,
-  WrenchScrewdriverIcon,
-  UsersIcon,
-  CurrencyDollarIcon,
-  ArchiveBoxIcon,
-  RouteIcon,
+    SunIcon,
+    MoonIcon,
+    LogoutIcon,
+    UsersIcon,
+    RouteIcon,
+    CheckBadgeIcon,
+    StoreIcon,
+    SettingsIcon,
+    DashboardIcon,
+    AccountIcon,
+    TrashIcon,
+    EditIcon,
+    PlusIcon,
+    ChevronDownIcon,
+    CheckIcon,
+    XMarkIcon,
+    ShoppingCartIcon,
+    WeatherCloudyIcon,
+    WeatherSunnyIcon,
+    CopyIcon,
+    ChartBarIcon,
+    DownloadIcon,
+    CurrencyDollarIcon,
+    MenuIcon,
+    CalendarDaysIcon,
+    SparklesIcon,
+    CloudRainIcon,
+    ArchiveBoxIcon,
 };

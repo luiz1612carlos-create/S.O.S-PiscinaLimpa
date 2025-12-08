@@ -4,9 +4,8 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
-import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, WrenchScrewdriverIcon } from '../../constants';
+import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon } from '../../constants';
 import { Modal } from '../../components/Modal';
-import { LogoBuilder } from '../../components/LogoBuilder';
 import { Select } from '../../components/Select';
 
 // This is a workaround for the no-build-tool environment
@@ -455,7 +454,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [shouldRemoveLogo, setShouldRemoveLogo] = useState(false);
-    const [isLogoBuilderOpen, setIsLogoBuilderOpen] = useState(false);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
 
@@ -605,19 +603,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         setLogoPreview(null);
         setLocalSettings(prev => ({ ...prev!, logoUrl: undefined }));
     };
-
-    const handleGeneratedLogo = (imageFile: File) => {
-        setLogoFile(imageFile);
-        setShouldRemoveLogo(false);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            setLogoPreview(reader.result as string);
-        };
-        reader.readAsDataURL(imageFile);
-        setIsLogoBuilderOpen(false);
-        showNotification("Logo gerada! Clique em 'Salvar Alterações' para aplicá-la.", 'info');
-    };
-
 
     const handleSave = async () => {
         if (!settings) return;
@@ -780,10 +765,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                             )}
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2">
-                                    <Button variant="secondary" size="sm" onClick={() => setIsLogoBuilderOpen(true)}>
-                                        <WrenchScrewdriverIcon className="w-4 h-4 mr-1" />
-                                        Criar Logo
-                                    </Button>
                                     <Input name="logo-upload" label="" type="file" accept="image/png, image/jpeg" onChange={handleLogoFileChange} containerClassName="flex-grow mb-0" />
                                     {logoPreview && (
                                         <Button variant="danger" size="sm" onClick={handleRemoveLogo} title="Remover Logo">
@@ -1024,13 +1005,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 </div>
             </div>
             
-            <LogoBuilder 
-                isOpen={isLogoBuilderOpen}
-                onClose={() => setIsLogoBuilderOpen(false)}
-                companyName={localSettings.companyName}
-                onLogoGenerated={handleGeneratedLogo}
-            />
-
             {isPriceChangeModalOpen && (
                 <Modal
                     isOpen={isPriceChangeModalOpen}
