@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
@@ -7,10 +6,56 @@ import { Spinner } from '../../components/Spinner';
 import { normalizeDimension } from '../../utils/calculations';
 import BudgetSuccessView from './BudgetSuccessView';
 import { Modal } from '../../components/Modal';
+import { GuidedTour, TourStep } from '../../components/GuidedTour';
+import { QuestionMarkCircleIcon } from '../../constants';
 
 interface PreBudgetViewProps {
     appContext: AppContextType;
 }
+
+const preBudgetTourSteps: TourStep[] = [
+    {
+        selector: '[data-tour-id="form-title"]',
+        position: 'bottom',
+        title: 'Bem-vindo ao Tour!',
+        content: 'Vamos mostrar como é fácil e rápido calcular um orçamento para a limpeza da sua piscina.',
+    },
+    {
+        selector: '[data-tour-id="dimensions"] legend',
+        highlightSelector: '[data-tour-id="dimensions"]',
+        position: 'bottom',
+        title: '1. Dimensões da Piscina',
+        content: 'Comece inserindo as medidas da sua piscina em metros. Use vírgula ou ponto para casas decimais (ex: 1,4 ou 1.4). O volume será calculado automaticamente.',
+    },
+    {
+        selector: '[data-tour-id="options"] legend',
+        highlightSelector: '[data-tour-id="options"]',
+        position: 'bottom',
+        title: '2. Opções Adicionais',
+        content: 'Marque estas opções se sua piscina usa água de poço ou é usada para festas/eventos, pois isso pode influenciar no tratamento e no valor.',
+    },
+    {
+        selector: '[data-tour-id="plans"] h3',
+        highlightSelector: '[data-tour-id="plans"]',
+        position: 'bottom',
+        title: '3. Selecione um Plano',
+        content: 'Escolha o plano que melhor se adapta às suas necessidades. O Plano VIP oferece descontos progressivos para contratos de maior duração.',
+    },
+    {
+        selector: '[data-tour-id="personal-data"] legend',
+        highlightSelector: '[data-tour-id="personal-data"]',
+        position: 'top',
+        title: '4. Seus Dados',
+        content: 'Preencha seus dados de contato. O e-mail que você informar aqui será usado para seu futuro acesso ao painel do cliente.',
+    },
+    {
+        selector: '[data-tour-id="final-value"]',
+        position: 'top',
+        title: 'Valor Final e Envio',
+        content: 'Após preencher tudo, o valor mensal estimado aparecerá aqui. Se estiver de acordo, clique no botão para enviar sua solicitação para nossa análise.',
+    },
+];
+
 
 const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const { settings, loading, createBudgetQuote, showNotification } = appContext;
@@ -38,6 +83,19 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
     const [hasAgreedToTerms, setHasAgreedToTerms] = useState(false);
+    const [isTourOpen, setIsTourOpen] = useState(false);
+
+    useEffect(() => {
+        const hasSeenTour = localStorage.getItem('hasSeenBudgetTour');
+        if (!hasSeenTour) {
+            setIsTourOpen(true);
+        }
+    }, []);
+
+    const handleCloseTour = () => {
+        localStorage.setItem('hasSeenBudgetTour', 'true');
+        setIsTourOpen(false);
+    };
 
     const selectedPlanType: PlanType = selectedPlanIdentifier === 'simples' ? 'Simples' : 'VIP';
     const selectedFidelityPlan = useMemo(() => {
@@ -182,11 +240,14 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     }
 
     return (
-        <div>
-            <h2 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-200">Calculadora de Orçamento</h2>
+        <div data-tour-id="welcome">
+            <GuidedTour steps={preBudgetTourSteps} isOpen={isTourOpen} onClose={handleCloseTour} />
+            <div className="flex justify-between items-center mb-6">
+                 <h2 data-tour-id="form-title" className="text-2xl font-bold text-center text-gray-800 dark:text-gray-200">Calculadora de Orçamento</h2>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-6">
                 
-                <fieldset className="border p-4 rounded-md dark:border-gray-600">
+                <fieldset data-tour-id="dimensions" className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">1. Dimensões da Piscina (metros)</legend>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
                         <Input label="Largura" name="width" type="text" inputMode="decimal" value={formData.width} onChange={handleInputChange} required placeholder="ex: 4 ou 4,5" />
@@ -196,7 +257,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                      {volume > 0 && <p className="text-center mt-2 text-lg font-medium text-secondary-600 dark:text-secondary-400">Volume: {volume.toLocaleString('pt-BR')} litros</p>}
                 </fieldset>
 
-                <fieldset className="border p-4 rounded-md dark:border-gray-600">
+                <fieldset data-tour-id="options" className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">2. Opções Adicionais</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2 items-center">
                         <div className="space-y-2">
@@ -228,7 +289,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                     </div>
                 </fieldset>
                 
-                 <div>
+                 <div data-tour-id="plans">
                     <h3 className="text-lg font-semibold text-center mb-4">3. Selecione um Plano</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <PlanCard 
@@ -269,7 +330,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                     <p className="text-gray-600 dark:text-gray-400 mt-1">O valor será revelado após o preenchimento completo.</p>
                 </div>
 
-                <fieldset className="border p-4 rounded-md dark:border-gray-600">
+                <fieldset data-tour-id="personal-data" className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">4. Seus Dados</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
                         <Input label="Nome Completo" name="name" value={formData.name} onChange={handleInputChange} required />
@@ -302,7 +363,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                 </fieldset>
                 
                 {isFormComplete && (
-                    <div className="text-center p-4 bg-primary-50 dark:bg-primary-900/50 rounded-lg">
+                    <div data-tour-id="final-value" className="text-center p-4 bg-primary-50 dark:bg-primary-900/50 rounded-lg">
                         <p className="text-lg font-medium text-gray-700 dark:text-gray-300">Valor Mensal Estimado:</p>
                         <p className="text-4xl font-bold text-primary-600 dark:text-primary-400">R$ {monthlyFee.toFixed(2).replace('.', ',')}</p>
                     </div>

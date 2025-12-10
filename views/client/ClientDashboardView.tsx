@@ -214,8 +214,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                 />
 
                 {/* Visit History */}
-                <Card>
-                    <CardHeader><h3 className="text-xl font-semibold">Histórico de Visitas</h3></CardHeader>
+                <Card data-tour-id="visit-history">
+                    <CardHeader data-tour-id="visit-history-header"><h3 className="text-xl font-semibold">Histórico de Visitas</h3></CardHeader>
                     <CardContent className="space-y-3 max-h-96 overflow-y-auto">
                         {clientData.visitHistory && clientData.visitHistory.length > 0 ?
                             [...clientData.visitHistory].sort((a, b) => (toDate(b.timestamp)?.getTime() || 0) - (toDate(a.timestamp)?.getTime() || 0)).map(visit => (
@@ -240,8 +240,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                 </Card>
 
                 {/* Pool Status */}
-                <Card>
-                    <CardHeader><h3 className="text-xl font-semibold">Status Atual da Piscina</h3></CardHeader>
+                <Card data-tour-id="pool-status">
+                    <CardHeader data-tour-id="pool-status-header"><h3 className="text-xl font-semibold">Status Atual da Piscina</h3></CardHeader>
                     <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                         <div><p className="text-sm text-gray-500">pH</p><p className="text-2xl font-bold">{clientData.poolStatus.ph.toFixed(1)}</p></div>
                         <div><p className="text-sm text-gray-500">Cloro</p><p className="text-2xl font-bold">{clientData.poolStatus.cloro.toFixed(1)}</p></div>
@@ -268,8 +268,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                             ) : <p>Nenhuma visita agendada.</p>}
                         </CardContent>
                     </Card>
-                     <Card>
-                        <CardHeader><h3 className="text-xl font-semibold">Pagamento</h3></CardHeader>
+                     <Card data-tour-id="payment">
+                        <CardHeader data-tour-id="payment-header"><h3 className="text-xl font-semibold">Pagamento</h3></CardHeader>
                         <CardContent className="flex flex-col justify-between h-full">
                              <div>
                                 <p className="text-gray-500">Mensalidade</p>
@@ -311,8 +311,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
 
             {/* My Products */}
             <div className="lg:col-span-1">
-                <Card>
-                    <CardHeader><h3 className="text-xl font-semibold">Meus Produtos</h3></CardHeader>
+                <Card data-tour-id="client-stock">
+                    <CardHeader data-tour-id="client-stock-header"><h3 className="text-xl font-semibold">Meus Produtos</h3></CardHeader>
                     <CardContent className="space-y-3 max-h-[80vh] overflow-y-auto">
                         {clientData.stock.length > 0 ? clientData.stock.map(item => (
                             <div key={item.productId} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">

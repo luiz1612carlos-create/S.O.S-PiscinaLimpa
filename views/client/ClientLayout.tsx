@@ -1,13 +1,12 @@
-
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthContextType, AppContextType } from '../../types';
-import { MoonIcon, SunIcon, LogoutIcon, DashboardIcon, StoreIcon, DownloadIcon, XMarkIcon } from '../../constants';
+import { MoonIcon, SunIcon, LogoutIcon, DashboardIcon, StoreIcon, DownloadIcon, XMarkIcon, QuestionMarkCircleIcon } from '../../constants';
 import { useTheme } from '../../hooks/useTheme';
 import ClientDashboardView from './ClientDashboardView';
 import ShopView from './ShopView';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { Button } from '../../components/Button';
+import { GuidedTour, TourStep } from '../../components/GuidedTour';
 
 interface ClientLayoutProps {
     authContext: AuthContextType;
@@ -16,12 +15,75 @@ interface ClientLayoutProps {
 
 type ClientView = 'dashboard' | 'shop';
 
+const clientDashboardTourSteps: TourStep[] = [
+    {
+        selector: '[data-tour-id="welcome-client"] header',
+        position: 'bottom',
+        title: 'Bem-vindo ao seu Painel!',
+        content: 'Este é o seu espaço para acompanhar tudo sobre a manutenção da sua piscina. Vamos fazer um tour rápido pelas principais funcionalidades.',
+    },
+    {
+        selector: '[data-tour-id="pool-status-header"]',
+        highlightSelector: '[data-tour-id="pool-status"]',
+        position: 'bottom',
+        title: 'Status da Piscina',
+        content: 'Aqui você pode ver em tempo real os últimos parâmetros medidos em sua piscina, como pH e cloro, e se ela está livre para uso.',
+    },
+    {
+        selector: '[data-tour-id="payment-header"]',
+        highlightSelector: '[data-tour-id="payment"]',
+        position: 'left',
+        title: 'Informações de Pagamento',
+        content: 'Acompanhe sua próxima data de vencimento e o valor da mensalidade. Você também pode copiar a chave PIX para facilitar o pagamento.',
+    },
+    {
+        selector: '[data-tour-id="visit-history-header"]',
+        highlightSelector: '[data-tour-id="visit-history"]',
+        position: 'top',
+        title: 'Histórico de Visitas',
+        content: 'Todas as visitas dos nossos técnicos são registradas aqui, incluindo data, parâmetros medidos, observações e até fotos!',
+    },
+    {
+        selector: '[data-tour-id="client-stock-header"]',
+        highlightSelector: '[data-tour-id="client-stock"]',
+        position: 'left',
+        title: 'Seu Estoque de Produtos',
+        content: 'Acompanhe a quantidade de produtos de limpeza que você tem em casa. Quando estiver acabando, avisaremos você!',
+    },
+    {
+        selector: '[data-tour-id="shop-nav"]',
+        position: 'bottom',
+        title: 'Loja de Produtos',
+        content: 'Precisando de algo a mais? Clique aqui para visitar nossa loja e fazer pedidos de produtos adicionais com entrega na sua casa.',
+    },
+    {
+        selector: '[data-tour-id="welcome-client"] header',
+        position: 'bottom',
+        title: 'Tour Concluído!',
+        content: 'Pronto! Agora você já conhece as principais áreas do seu painel. Fique à vontade para explorar!',
+    },
+];
+
+
 const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) => {
     const { userData, logout } = authContext;
     const { theme, toggleTheme } = useTheme();
     const [currentView, setCurrentView] = useState<ClientView>('dashboard');
     const { canInstall, promptInstall } = usePWAInstall();
     const [isInstallBannerVisible, setIsInstallBannerVisible] = useState(true);
+    const [isTourOpen, setIsTourOpen] = useState(false);
+
+    useEffect(() => {
+        const hasSeenTour = localStorage.getItem('hasSeenDashboardTour');
+        if (!hasSeenTour) {
+            setIsTourOpen(true);
+        }
+    }, []);
+
+    const handleCloseTour = () => {
+        localStorage.setItem('hasSeenDashboardTour', 'true');
+        setIsTourOpen(false);
+    };
 
     const renderView = () => {
         switch (currentView) {
@@ -47,7 +109,8 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
     ].filter(Boolean).join(' ');
 
     return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100" data-tour-id="welcome-client">
+            <GuidedTour steps={clientDashboardTourSteps} isOpen={isTourOpen} onClose={handleCloseTour} />
             {/* Install Banner */}
             {canInstall && isInstallBannerVisible && (
                  <div className="bg-primary-600 text-white p-3 flex items-center justify-center text-center text-sm gap-4">
@@ -86,6 +149,7 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
                             {navItems.map(item => !item.disabled && (
                                 <button
                                     key={item.id}
+                                    data-tour-id={item.id === 'shop' ? 'shop-nav' : ''}
                                     onClick={() => setCurrentView(item.id as ClientView)}
                                     className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium ${currentView === item.id ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
                                 >
@@ -110,6 +174,7 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
                     {navItems.map(item => !item.disabled && (
                         <button
                             key={item.id}
+                             data-tour-id={item.id === 'shop' ? 'shop-nav-mobile' : ''}
                             onClick={() => setCurrentView(item.id as ClientView)}
                             className={`flex flex-col items-center gap-1 p-2 rounded-md text-xs font-medium w-full ${currentView === item.id ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300'}`}
                         >
