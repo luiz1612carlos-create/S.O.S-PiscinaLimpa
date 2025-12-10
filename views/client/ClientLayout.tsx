@@ -161,6 +161,14 @@ const ClientLayout: React.FC<ClientLayoutProps> = ({ authContext, appContext }) 
                     </div>
                     <div className="flex items-center space-x-3">
                         <span className="text-sm hidden sm:inline">Olá, {userData?.name || userData?.email}</span>
+                         <button
+                            onClick={() => setIsTourOpen(true)}
+                            className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                            aria-label="Fazer tour guiado"
+                            title="Fazer tour guiado"
+                        >
+                            <QuestionMarkCircleIcon className="w-5 h-5" />
+                        </button>
                         <button onClick={toggleTheme} className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
                             {theme === 'dark' ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
                         </button>

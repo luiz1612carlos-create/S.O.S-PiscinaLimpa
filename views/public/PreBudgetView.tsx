@@ -244,6 +244,14 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             <GuidedTour steps={preBudgetTourSteps} isOpen={isTourOpen} onClose={handleCloseTour} />
             <div className="flex justify-between items-center mb-6">
                  <h2 data-tour-id="form-title" className="text-2xl font-bold text-center text-gray-800 dark:text-gray-200">Calculadora de Orçamento</h2>
+                 <button
+                    onClick={() => setIsTourOpen(true)}
+                    className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    aria-label="Fazer tour guiado"
+                    title="Fazer tour guiado"
+                >
+                    <QuestionMarkCircleIcon className="w-6 h-6" />
+                </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6">
                 
