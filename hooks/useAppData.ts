@@ -512,7 +512,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 includeProducts: false, // Always false from budget
                 isPartyPool: budget.isPartyPool,
                 plan: budget.plan,
-                fidelityPlan: budget.fidelityPlan,
                 clientStatus: 'Ativo',
                 poolStatus: { ph: 7.2, cloro: 1.5, alcalinidade: 100, uso: 'Livre para uso' },
                 payment: {
@@ -524,6 +523,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 lastVisitDuration: 0,
             };
+            
+            // FIX: Conditionally add fidelityPlan to avoid saving 'undefined' to Firestore.
+            if (budget.fidelityPlan) {
+                newClient.fidelityPlan = budget.fidelityPlan;
+            }
+
             batch.set(clientDocRef, newClient);
 
             const budgetRef = db.collection('pre-budgets').doc(budgetId);
@@ -533,8 +538,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         } catch (error: any) {
             console.error("Erro ao aprovar orçamento de novo cliente:", error);
+            // Add a fallback check for the specific error code from Firebase
+            if (error.code === 'auth/email-already-in-use') {
+                throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
+            }
             // The original Firebase error is often more specific (e.g., weak password)
-            // so we can re-throw it. The email-in-use case is already handled.
             throw error;
         }
     };
