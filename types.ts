@@ -372,6 +372,7 @@ export interface AppData {
     resetReportsData: () => Promise<void>;
     createPoolEvent: (event: Omit<PoolEvent, 'id' | 'status' | 'createdAt' | 'clientId' | 'clientName'> & { clientId: string, clientName: string }) => Promise<void>;
     acknowledgePoolEvent: (eventId: string) => Promise<void>;
+    deletePoolEvent: (eventId: string) => Promise<void>;
     saveRecessPeriod: (recess: Omit<RecessPeriod, 'id'> | RecessPeriod) => Promise<void>;
     deleteRecessPeriod: (recessId: string) => Promise<void>;
 }

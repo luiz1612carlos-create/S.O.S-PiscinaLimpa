@@ -1,8 +1,10 @@
+
 import React, { useState, useMemo } from 'react';
 import { AppContextType, PoolEvent } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
+import { TrashIcon } from '../../constants';
 
 interface EventsViewProps {
     appContext: AppContextType;
@@ -17,8 +19,9 @@ const toDate = (timestamp: any): Date | null => {
 };
 
 const EventsView: React.FC<EventsViewProps> = ({ appContext }) => {
-    const { poolEvents, loading, acknowledgePoolEvent, showNotification } = appContext;
+    const { poolEvents, loading, acknowledgePoolEvent, deletePoolEvent, showNotification } = appContext;
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [isDeletingBatch, setIsDeletingBatch] = useState(false);
     const [activeTab, setActiveTab] = useState<'new' | 'acknowledged'>('new');
 
     const filteredEvents = useMemo(() => {
@@ -27,11 +30,25 @@ const EventsView: React.FC<EventsViewProps> = ({ appContext }) => {
         return poolEvents.filter(event => {
             const eventDate = toDate(event.eventDate);
             const statusMatch = activeTab === 'new' ? event.status === 'notified' : event.status === 'acknowledged';
-            // For acknowledged, show past events too for history, but for new, only show upcoming
+            
+            // For 'new' tab, hide past events to reduce clutter. 
+            // For 'acknowledged' tab, show everything so the user can see history or delete it.
             const dateMatch = activeTab === 'new' ? (eventDate && eventDate >= now) : true;
+            
             return statusMatch && dateMatch;
         }).sort((a,b) => (toDate(b.eventDate)?.getTime() || 0) - (toDate(a.eventDate)?.getTime() || 0));
     }, [poolEvents, activeTab]);
+
+    const expiredConfirmedEvents = useMemo(() => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(23, 59, 59, 999);
+
+        return poolEvents.filter(event => {
+            const eventDate = toDate(event.eventDate);
+            return event.status === 'acknowledged' && eventDate && eventDate <= yesterday;
+        });
+    }, [poolEvents]);
 
     const handleAcknowledge = async (eventId: string) => {
         setProcessingId(eventId);
@@ -42,6 +59,35 @@ const EventsView: React.FC<EventsViewProps> = ({ appContext }) => {
             showNotification(error.message || 'Erro ao confirmar evento.', 'error');
         } finally {
             setProcessingId(null);
+        }
+    };
+
+    const handleDelete = async (eventId: string) => {
+        if (!window.confirm("Tem certeza que deseja excluir este evento?")) return;
+        setProcessingId(eventId);
+        try {
+            await deletePoolEvent(eventId);
+            showNotification('Evento excluído com sucesso.', 'success');
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao excluir evento.', 'error');
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
+    const handleBatchDeleteExpired = async () => {
+        if (expiredConfirmedEvents.length === 0) return;
+        if (!window.confirm(`Tem certeza que deseja excluir ${expiredConfirmedEvents.length} eventos passados? Esta ação não pode ser desfeita.`)) return;
+
+        setIsDeletingBatch(true);
+        try {
+            // Execute deletions in parallel
+            await Promise.all(expiredConfirmedEvents.map(event => deletePoolEvent(event.id)));
+            showNotification(`${expiredConfirmedEvents.length} eventos antigos foram removidos.`, 'success');
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao limpar histórico.', 'error');
+        } finally {
+            setIsDeletingBatch(false);
         }
     };
 
@@ -64,6 +110,24 @@ const EventsView: React.FC<EventsViewProps> = ({ appContext }) => {
                 </button>
             </div>
 
+            {activeTab === 'acknowledged' && expiredConfirmedEvents.length > 0 && (
+                <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div>
+                        <h4 className="font-semibold text-yellow-800 dark:text-yellow-200">Limpeza de Histórico</h4>
+                        <p className="text-sm text-yellow-700 dark:text-yellow-300">Existem {expiredConfirmedEvents.length} eventos confirmados que já expiraram.</p>
+                    </div>
+                    <Button 
+                        variant="danger" 
+                        size="sm" 
+                        onClick={handleBatchDeleteExpired}
+                        isLoading={isDeletingBatch}
+                    >
+                        <TrashIcon className="w-4 h-4 mr-2" />
+                        Limpar Eventos Passados
+                    </Button>
+                </div>
+            )}
+
             {loading.poolEvents ? (
                 <div className="flex justify-center mt-8"><Spinner size="lg" /></div>
             ) : filteredEvents.length === 0 ? (
@@ -73,7 +137,19 @@ const EventsView: React.FC<EventsViewProps> = ({ appContext }) => {
                     {filteredEvents.map(event => (
                         <Card key={event.id}>
                            <CardHeader>
-                               <h3 className="text-xl font-semibold">{event.clientName}</h3>
+                               <div className="flex justify-between items-start">
+                                   <h3 className="text-xl font-semibold truncate pr-2">{event.clientName}</h3>
+                                   {activeTab === 'acknowledged' && (
+                                       <button 
+                                            onClick={() => handleDelete(event.id)} 
+                                            className="text-gray-400 hover:text-red-500 transition-colors"
+                                            title="Excluir Evento"
+                                            disabled={!!processingId}
+                                        >
+                                           <TrashIcon className="w-5 h-5" />
+                                       </button>
+                                   )}
+                               </div>
                                <p className="font-bold text-primary-500">{toDate(event.eventDate)?.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                            </CardHeader>
                            <CardContent>

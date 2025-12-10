@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
@@ -888,7 +889,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     }, [user, userData]);
 
     const resetReportsData = async () => {
-        if (!window.confirm("Você tem certeza? Esta ação irá apagar todos os dados de relatórios (orçamentos, pedidos, sugestões de reposição e rotas), mas irá PRESERVAR seus clientes e produtos. Esta ação é irreversível.")) {
+        if (!window.confirm("Você tem certeza? Esta ação irá apagar todos os dados de relatórios (orçamentos, pedidos, sugestões de reposição e rotas), mas NÃO APAGARÁ seus clientes, produtos ou visitas. Esta ação é irreversível.")) {
             return;
         }
 
@@ -924,6 +925,10 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     const acknowledgePoolEvent = (eventId: string) => {
         return db.collection('poolEvents').doc(eventId).update({ status: 'acknowledged' });
+    };
+
+    const deletePoolEvent = (eventId: string) => {
+        return db.collection('poolEvents').doc(eventId).delete();
     };
 
     const saveRecessPeriod = async (recess: Omit<RecessPeriod, 'id'> | RecessPeriod) => {
@@ -967,6 +972,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         resetReportsData,
         createPoolEvent,
         acknowledgePoolEvent,
+        deletePoolEvent,
         saveRecessPeriod,
         deleteRecessPeriod,
     };
