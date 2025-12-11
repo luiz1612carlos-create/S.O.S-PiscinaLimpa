@@ -1,13 +1,14 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { AppContextType, PlanType, Settings, FidelityPlan, BudgetQuote } from '../../types';
 import { Spinner } from '../../components/Spinner';
-import { normalizeDimension } from '../../utils/calculations';
+import { normalizeDimension, calculateDrivingDistance } from '../../utils/calculations';
 import BudgetSuccessView from './BudgetSuccessView';
 import { Modal } from '../../components/Modal';
 import { GuidedTour, TourStep } from '../../components/GuidedTour';
-import { QuestionMarkCircleIcon } from '../../constants';
+import { QuestionMarkCircleIcon, SparklesIcon } from '../../constants';
 
 interface PreBudgetViewProps {
     appContext: AppContextType;
@@ -49,10 +50,17 @@ const preBudgetTourSteps: TourStep[] = [
         content: 'Preencha seus dados de contato. O e-mail que você informar aqui será usado para seu futuro acesso ao painel do cliente.',
     },
     {
+        selector: '[data-tour-id="address-section"] legend',
+        highlightSelector: '[data-tour-id="address-section"]',
+        position: 'top',
+        title: '5. Endereço',
+        content: 'Após preencher o endereço, clique no botão para validar a localização. Isso é obrigatório para ver o valor final.',
+    },
+    {
         selector: '[data-tour-id="final-value"]',
         position: 'top',
         title: 'Valor Final e Envio',
-        content: 'Após preencher tudo, o valor mensal estimado aparecerá aqui. Se estiver de acordo, clique no botão para enviar sua solicitação para nossa análise.',
+        content: 'Após calcular a distância, o valor mensal estimado aparecerá aqui. Se estiver de acordo, clique no botão para enviar sua solicitação para nossa análise.',
     },
 ];
 
@@ -84,6 +92,10 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
     const [hasAgreedToTerms, setHasAgreedToTerms] = useState(false);
     const [isTourOpen, setIsTourOpen] = useState(false);
+
+    // New states for distance calculation
+    const [distanceFromHq, setDistanceFromHq] = useState<number | null>(null);
+    const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
 
     useEffect(() => {
         const hasSeenTour = localStorage.getItem('hasSeenBudgetTour');
@@ -137,12 +149,17 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         if (options.hasWellWater) basePrice += pricing.wellWaterFee;
         if (options.isPartyPool) basePrice += pricing.partyPoolFee;
         
+        // Add distance fee if calculated
+        if (distanceFromHq && pricing.perKm) {
+            basePrice += distanceFromHq * pricing.perKm;
+        }
+        
         if (selectedPlanType === 'VIP' && selectedFidelityPlan && settings.features.vipPlanEnabled) {
             basePrice = basePrice * (1 - selectedFidelityPlan.discountPercent / 100);
         }
 
         return basePrice;
-    }, [volume, options, selectedPlanType, selectedFidelityPlan, settings]);
+    }, [volume, options, selectedPlanType, selectedFidelityPlan, settings, distanceFromHq]);
 
     useEffect(() => {
         // If VIP plans are disabled and a VIP plan is selected, revert to simple
@@ -162,10 +179,47 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         } else {
             setFormData({ ...formData, [name]: value });
         }
+        // Reset distance if address changes materially
+        if (['street', 'number', 'city', 'neighborhood', 'state'].includes(name)) {
+            setDistanceFromHq(null);
+        }
     };
 
     const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setOptions({ ...options, [e.target.name]: e.target.checked });
+    };
+
+    const handleCalculateDistance = async () => {
+        if (!settings) return;
+        
+        // Validate address fields
+        const { street, number, neighborhood, city, state } = formData;
+        if (!street || !number || !neighborhood || !city || !state) {
+            showNotification('Preencha todo o endereço antes de calcular a distância.', 'error');
+            return;
+        }
+
+        setIsCalculatingDistance(true);
+        try {
+            const origin = `${settings.baseAddress.street}, ${settings.baseAddress.number}, ${settings.baseAddress.city} - ${settings.baseAddress.state}`;
+            const destination = `${street}, ${number}, ${neighborhood}, ${city} - ${state}`;
+
+            // Use the new precise function instead of AI
+            const km = await calculateDrivingDistance(origin, destination);
+
+            if (km >= 0) {
+                setDistanceFromHq(km);
+                showNotification(`Endereço validado! Distância de condução: ${km} km.`, 'success');
+            } else {
+                throw new Error("Distância inválida retornada.");
+            }
+
+        } catch (error: any) {
+            console.error(error);
+            showNotification(error.message || "Erro ao validar endereço. Verifique os dados.", 'error');
+        } finally {
+            setIsCalculatingDistance(false);
+        }
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -178,13 +232,17 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             showNotification("Por favor, preencha as dimensões da piscina corretamente.", "error");
             return;
         }
+        if (distanceFromHq === null) {
+            showNotification("Por favor, valide o endereço antes de finalizar.", "error");
+            return;
+        }
         setIsTermsModalOpen(true);
     };
     
     const handleFinalSubmit = async () => {
         setIsSubmitting(true);
         try {
-            const budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'> = {
+            const budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt' | 'updatedAt'> = {
                 name: formData.name,
                 email: formData.email,
                 phone: formData.phone,
@@ -206,6 +264,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                 isPartyPool: options.isPartyPool,
                 plan: selectedPlanType,
                 monthlyFee: monthlyFee,
+                distanceFromHq: distanceFromHq || 0,
             };
 
             if (selectedPlanType === 'VIP' && selectedFidelityPlan) {
@@ -218,6 +277,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             
             setFormData({ name: '', email: '', phone: '', street: '', number: '', neighborhood: '', city: '', state: '', zip: '', width: '', length: '', depth: '' });
             setOptions({ hasWellWater: false, isPartyPool: false });
+            setDistanceFromHq(null);
         } catch (error: any) {
             showNotification(error.message || "Falha ao enviar orçamento.", 'error');
         } finally {
@@ -335,7 +395,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
 
                 <div className="text-center pt-6 border-t dark:border-gray-700">
                     <h3 className="text-xl font-semibold">Preencha seus dados para ver o valor</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mt-1">O valor será revelado após o preenchimento completo.</p>
+                    <p className="text-gray-600 dark:text-gray-400 mt-1">O cálculo final será feito após a validação do endereço.</p>
                 </div>
 
                 <fieldset data-tour-id="personal-data" className="border p-4 rounded-md dark:border-gray-600">
@@ -347,8 +407,8 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                     </div>
                 </fieldset>
 
-                <fieldset className="border p-4 rounded-md dark:border-gray-600">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">5. Endereço</legend>
+                <fieldset data-tour-id="address-section" className="border p-4 rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50">
+                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">5. Endereço e Validação</legend>
                     <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 mt-2">
                         <Input
                             containerClassName="sm:col-span-2"
@@ -368,24 +428,53 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                         <Input containerClassName="sm:col-span-4" label="Cidade" name="city" value={formData.city} onChange={handleInputChange} required />
                         <Input containerClassName="sm:col-span-2" label="UF" name="state" value={formData.state} onChange={handleInputChange} required maxLength={2} />
                     </div>
+                    
+                    <div className="mt-4 p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center">
+                        <p className="text-sm text-gray-500 mb-2">
+                            É necessário validar o endereço para calcular o valor exato.
+                        </p>
+                        <Button 
+                            type="button" 
+                            onClick={handleCalculateDistance} 
+                            isLoading={isCalculatingDistance}
+                            disabled={!formData.street || !formData.city || distanceFromHq !== null}
+                            variant={distanceFromHq !== null ? 'secondary' : 'primary'}
+                            className="w-full sm:w-auto"
+                        >
+                            <SparklesIcon className="w-5 h-5 mr-2" />
+                            {distanceFromHq !== null ? 'Endereço Validado ✓' : 'Validar Endereço'}
+                        </Button>
+                        {distanceFromHq !== null && (
+                            <p className="mt-2 text-green-600 dark:text-green-400 text-sm font-semibold">
+                                Distância calculada: {distanceFromHq} km
+                            </p>
+                        )}
+                    </div>
                 </fieldset>
                 
-                {isFormComplete && (
-                    <div data-tour-id="final-value" className="text-center p-4 bg-primary-50 dark:bg-primary-900/50 rounded-lg">
-                        <p className="text-lg font-medium text-gray-700 dark:text-gray-300">Valor Mensal Estimado:</p>
+                {isFormComplete && distanceFromHq !== null && (
+                    <div data-tour-id="final-value" className="text-center p-4 bg-primary-50 dark:bg-primary-900/50 rounded-lg animate-fade-in">
+                        <p className="text-lg font-medium text-gray-700 dark:text-gray-300">Valor Mensal Final:</p>
                         <p className="text-4xl font-bold text-primary-600 dark:text-primary-400">R$ {monthlyFee.toFixed(2).replace('.', ',')}</p>
+                        <p className="text-sm text-gray-500 mt-1">Cálculo baseado na distância de {distanceFromHq} km.</p>
                     </div>
                 )}
 
-                <Button 
-                    type="submit" 
-                    isLoading={isSubmitting} 
-                    className="w-full" 
-                    size="lg"
-                    disabled={!isFormComplete || isSubmitting}
-                >
-                    Enviar Orçamento para Análise
-                </Button>
+                {distanceFromHq !== null ? (
+                    <Button 
+                        type="submit" 
+                        isLoading={isSubmitting} 
+                        className="w-full" 
+                        size="lg"
+                        disabled={!isFormComplete || isSubmitting}
+                    >
+                        Enviar Orçamento para Análise
+                    </Button>
+                ) : (
+                    <div className="text-center p-4 bg-gray-100 dark:bg-gray-800 rounded text-gray-500">
+                        Preencha o endereço e clique em "Validar Endereço" para finalizar.
+                    </div>
+                )}
             </form>
             
             {isTermsModalOpen && settings && (

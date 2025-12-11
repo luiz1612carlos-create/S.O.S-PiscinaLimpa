@@ -107,6 +107,8 @@ export interface Client {
     visitHistory?: Visit[];
     lastVisitDuration?: number; // in minutes
     advancePaymentUntil?: any; // Firestore Timestamp
+    customPricing?: PricingSettings; // Allows locking pricing for specific clients (e.g. VIPs)
+    distanceFromHq?: number; // Distance from headquarters in KM
 }
 
 export interface BudgetQuote {
@@ -128,6 +130,7 @@ export interface BudgetQuote {
     monthlyFee: number;
     status: BudgetQuoteStatus;
     createdAt: any; // Firestore Timestamp
+    distanceFromHq?: number;
 }
 
 export interface RouteDay {
@@ -264,6 +267,8 @@ export interface Settings {
         advancePaymentTitle: string;
         advancePaymentSubtitleVIP: string;
         advancePaymentSubtitleSimple: string;
+        maintenanceModeEnabled: boolean;
+        maintenanceMessage: string;
     };
     automation: {
         replenishmentStockThreshold: number;
@@ -341,7 +346,7 @@ export interface AppData {
         count: number;
         percentage: number;
     };
-    approveBudgetQuote: (budgetId: string, password: string) => Promise<void>;
+    approveBudgetQuote: (budgetId: string, password: string, distanceFromHq?: number) => Promise<void>;
     rejectBudgetQuote: (budgetId: string) => Promise<void>;
     updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
     deleteClient: (clientId: string) => Promise<void>;

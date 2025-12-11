@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppContextType, AuthContextType, Settings, Bank, AdvancePaymentOption, FidelityPlan, UserData, AffectedClientPreview, PendingPriceChange, RecessPeriod } from '../../types';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
-import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon } from '../../constants';
+import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, ChartBarIcon, CurrencyDollarIcon } from '../../constants';
 import { Modal } from '../../components/Modal';
 import { Select } from '../../components/Select';
+import { calculateClientMonthlyFee } from '../../utils/calculations';
 
 // This is a workaround for the no-build-tool environment
 declare const html2canvas: any;
@@ -467,14 +469,55 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     const [effectiveDate, setEffectiveDate] = useState<Date | null>(null);
     const [viewAffectedClientsModalOpen, setViewAffectedClientsModalOpen] = useState(false);
 
+    // Impact Analysis State
+    const [isImpactModalOpen, setIsImpactModalOpen] = useState(false);
+
     const pendingChange = pendingPriceChanges.find(c => c.status === 'pending');
 
     useEffect(() => {
         if (settings) {
-            setLocalSettings(JSON.parse(JSON.stringify(settings)));
+            const initialSettings = JSON.parse(JSON.stringify(settings));
+            
+            // If there's a pending change, show those pricing values instead of current ones in the inputs
+            // This is visually helpful since the inputs are blocked, so users can see what's pending.
+            if (pendingChange) {
+                initialSettings.pricing = JSON.parse(JSON.stringify(pendingChange.newPricing));
+            }
+            
+            setLocalSettings(initialSettings);
             setLogoPreview(settings.logoUrl || null);
         }
-    }, [settings]);
+    }, [settings, pendingChange]);
+
+    const impactAnalysis = useMemo(() => {
+        if (!settings || !localSettings) return [];
+        
+        return clients
+            .filter(c => c.clientStatus === 'Ativo' && !c.customPricing && c.plan === 'Simples') // Only calculate impact for standard plans without locks
+            .map(client => {
+                const currentFee = calculateClientMonthlyFee(client, settings);
+                // Use the localSettings (which contains the new drafted pricing) to calculate the new fee
+                const newFee = calculateClientMonthlyFee(client, localSettings);
+                
+                const diff = newFee - currentFee;
+                
+                return {
+                    id: client.id,
+                    name: client.name,
+                    currentFee,
+                    newFee,
+                    diff,
+                    percent: currentFee > 0 ? (diff / currentFee) * 100 : 0
+                };
+            })
+            // Only show clients where the price actually changes (tolerance for float errors)
+            .filter(item => Math.abs(item.diff) > 0.01)
+            .sort((a, b) => b.diff - a.diff); // Sort by highest increase first
+    }, [clients, settings, localSettings]);
+
+    const totalRevenueDiff = useMemo(() => {
+        return impactAnalysis.reduce((acc, curr) => acc + curr.diff, 0);
+    }, [impactAnalysis]);
 
     if (loading.settings || loading.pendingPriceChanges || !localSettings) {
         return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
@@ -535,10 +578,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         }));
     };
     
-     const handleTierChange = (index: number, field: 'upTo' | 'price', value: number) => {
-        const newTiers = [...localSettings.pricing.volumeTiers];
-        newTiers[index][field] = value;
-        setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
+    const handleTierChange = (index: number, field: 'upTo' | 'price', value: number) => {
+        setLocalSettings(prev => {
+             const newPricing = { ...prev!.pricing };
+             const newTiers = prev!.pricing.volumeTiers.map((t, i) => 
+                 i === index ? { ...t, [field]: value } : t
+             );
+             newPricing.volumeTiers = newTiers;
+             return { ...prev!, pricing: newPricing };
+        });
     };
 
     const addTier = () => {
@@ -624,24 +672,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
             setShouldRemoveLogo(false);
 
             if (hasPriceChanged) {
-                if (pendingChange) {
-                    showNotification('Já existe uma alteração de preço agendada. Aguarde a aplicação para agendar uma nova.', 'error');
-                    setLocalSettings(prev => ({ ...prev!, pricing: settings.pricing })); // Revert local changes
-                    return;
-                }
+                // REMOVED BLOCKING LOGIC HERE
+                // We now allow new price changes even if there is a pending one.
+                // The newest scheduled change will simply be added to the queue (or handled by backend logic).
 
                 const thirtyDaysFromNow = new Date();
                 thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-                const affected = clients.filter(c => {
-                    if (c.clientStatus !== 'Ativo') return false;
-                    if (c.plan === 'Simples') return true;
-                    if (c.plan === 'VIP') {
-                        const dueDate = new Date(c.payment.dueDate);
-                        return dueDate <= thirtyDaysFromNow;
-                    }
-                    return false;
-                }).map(c => ({ id: c.id, name: c.name }));
+                // Use the impacted clients from our real-time calculation
+                const affected = impactAnalysis.map(c => ({ id: c.id, name: c.name }));
                 
                 setAffectedClientsPreview(affected);
                 setEffectiveDate(thirtyDaysFromNow);
@@ -886,15 +925,36 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
 
                 {/* Pricing */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow relative">
-                     {pendingChange && (
-                        <div className="absolute inset-0 bg-gray-400/30 dark:bg-gray-900/50 flex items-center justify-center z-10 rounded-lg">
-                            <span className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-md font-semibold shadow-lg">Bloqueado até a aplicação da mudança agendada.</span>
+                    <fieldset>
+                        <div className="flex justify-between items-center mb-4">
+                             <h3 className="text-xl font-semibold">Precificação</h3>
+                             <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={() => setIsImpactModalOpen(true)}
+                                className={impactAnalysis.length > 0 ? "border-yellow-500 text-yellow-600" : ""}
+                            >
+                                <CurrencyDollarIcon className="w-4 h-4 mr-1" />
+                                Visualizar Impacto ({impactAnalysis.length})
+                             </Button>
                         </div>
-                    )}
-                    <fieldset disabled={!!pendingChange}>
-                        <h3 className="text-xl font-semibold mb-4">Precificação</h3>
+                        
+                        {impactAnalysis.length > 0 && (
+                            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded flex justify-between items-center">
+                                <div>
+                                    <p className="text-sm font-bold text-blue-800 dark:text-blue-200">Simulação de Impacto em Tempo Real</p>
+                                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                                        Com estas alterações, o faturamento mensal variará em:
+                                    </p>
+                                </div>
+                                <div className={`text-lg font-bold ${totalRevenueDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {totalRevenueDiff >= 0 ? '+' : ''}R$ {totalRevenueDiff.toFixed(2)}
+                                </div>
+                            </div>
+                        )}
+
                         <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
-                            <strong>Atenção:</strong> Alterar estes valores agendará uma mudança de preço para os clientes aplicáveis, que entrará em vigor em 30 dias.
+                            <strong>Atenção:</strong> Alterar estes valores agendará uma mudança de preço para os clientes aplicáveis (Plano Simples sem travas), que entrará em vigor em 30 dias.
                         </p>
                         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                             <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
@@ -988,6 +1048,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                 </div>
                             </div>
                         )}
+
+                        <div className="pt-4 mt-4 border-t dark:border-gray-700">
+                             <ToggleSwitch 
+                                label="Modo Manutenção (Bloquear Acesso de Clientes)" 
+                                enabled={localSettings.features.maintenanceModeEnabled} 
+                                onChange={() => handleToggle('maintenanceModeEnabled')} 
+                            />
+                            {localSettings.features.maintenanceModeEnabled && (
+                                <div className="pl-8 mt-2">
+                                    <Input 
+                                        label="Mensagem de Manutenção" 
+                                        name="maintenanceMessage" 
+                                        value={localSettings.features.maintenanceMessage || ''} 
+                                        onChange={(e) => handleSimpleChange(e, 'features')} 
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -1031,7 +1109,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                         )}
                     </div>
                     <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                        Clientes do Plano Simples e clientes VIP com mensalidades a vencer nos próximos 30 dias são afetados. Clientes VIP com planos de fidelidade ativos e com pagamentos em dia não serão afetados até o fim de seus respectivos planos.
+                        Apenas clientes do Plano Simples serão afetados pelo reajuste e notificados. Clientes VIP (Fidelidade) não sofrerão alterações.
                     </p>
                 </Modal>
             )}
@@ -1049,6 +1127,61 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                         <ul className="list-disc list-inside">
                             {pendingChange.affectedClients.map(c => <li key={c.id}>{c.name}</li>)}
                         </ul>
+                    </div>
+                </Modal>
+            )}
+            
+            {isImpactModalOpen && (
+                <Modal
+                    isOpen={isImpactModalOpen}
+                    onClose={() => setIsImpactModalOpen(false)}
+                    title="Simulação de Impacto Financeiro"
+                    size="xl"
+                    footer={<Button onClick={() => setIsImpactModalOpen(false)}>Fechar</Button>}
+                >
+                    <div className="mb-4 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                        <div className="flex justify-between items-center">
+                            <span className="font-semibold">Total de Clientes Afetados:</span>
+                            <span>{impactAnalysis.length}</span>
+                        </div>
+                        <div className="flex justify-between items-center mt-2">
+                            <span className="font-semibold">Variação Total no Faturamento:</span>
+                            <span className={`font-bold text-lg ${totalRevenueDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {totalRevenueDiff >= 0 ? '+' : ''}R$ {totalRevenueDiff.toFixed(2)}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-600">
+                                <tr>
+                                    <th className="px-4 py-2 text-left">Cliente</th>
+                                    <th className="px-4 py-2 text-right">Valor Atual</th>
+                                    <th className="px-4 py-2 text-right">Novo Valor</th>
+                                    <th className="px-4 py-2 text-right">Diferença</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                {impactAnalysis.map(item => (
+                                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-2 font-medium">{item.name}</td>
+                                        <td className="px-4 py-2 text-right">R$ {item.currentFee.toFixed(2)}</td>
+                                        <td className="px-4 py-2 text-right font-bold">R$ {item.newFee.toFixed(2)}</td>
+                                        <td className={`px-4 py-2 text-right font-bold ${item.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                            {item.diff >= 0 ? '+' : ''}R$ {item.diff.toFixed(2)} ({item.percent.toFixed(1)}%)
+                                        </td>
+                                    </tr>
+                                ))}
+                                {impactAnalysis.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                                            Nenhum cliente sofrerá alteração de preço com as configurações atuais.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </Modal>
             )}

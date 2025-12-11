@@ -1,11 +1,12 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent, RecessPeriod } from '../../types';
+import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent, RecessPeriod, PendingPriceChange } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Modal } from '../../components/Modal';
-import { WeatherSunnyIcon, CopyIcon, CheckIcon, XMarkIcon, CalendarDaysIcon } from '../../constants';
+import { WeatherSunnyIcon, CopyIcon, CheckIcon, XMarkIcon, CalendarDaysIcon, CurrencyDollarIcon } from '../../constants';
 import { calculateClientMonthlyFee } from '../../utils/calculations';
 
 interface ClientDashboardViewProps {
@@ -23,7 +24,7 @@ const toDate = (timestamp: any): Date | null => {
 
 const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, appContext }) => {
     const { user, changePassword, showNotification } = authContext;
-    const { getClientData, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent } = appContext;
+    const { getClientData, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent, pendingPriceChanges } = appContext;
     const [clientData, setClientData] = useState<Client | null>(null);
     const [loading, setLoading] = useState(true);
     
@@ -77,6 +78,19 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
 
         return updatedAt > threeDaysAgo;
     }, [mostRecentRequest]);
+    
+    // Check for Price Change Notifications
+    const priceChangeNotification = useMemo(() => {
+        if (!clientData || !pendingPriceChanges || pendingPriceChanges.length === 0) return null;
+        
+        // Find the first pending change that affects this client
+        const relevantChange = pendingPriceChanges.find(change => 
+            change.status === 'pending' && 
+            change.affectedClients.some(affected => affected.id === clientData.id)
+        );
+        
+        return relevantChange;
+    }, [clientData, pendingPriceChanges]);
 
 
     const handlePasswordChange = async (e: React.FormEvent) => {
@@ -177,6 +191,15 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+                
+                {priceChangeNotification && (
+                    <PriceChangeNotificationCard 
+                        notification={priceChangeNotification} 
+                        currentFee={monthlyFee} 
+                        client={clientData}
+                        settings={settings}
+                    />
+                )}
                 
                 {upcomingRecesses.length > 0 && <RecessNotificationCard recesses={upcomingRecesses} />}
 
@@ -340,6 +363,52 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                 />
             )}
         </div>
+    );
+};
+
+interface PriceChangeNotificationCardProps {
+    notification: PendingPriceChange;
+    currentFee: number;
+    client: Client;
+    settings: Settings;
+}
+
+const PriceChangeNotificationCard: React.FC<PriceChangeNotificationCardProps> = ({ notification, currentFee, client, settings }) => {
+    // Calculate new fee explicitly using the pricing from the notification as an override.
+    // This ensures that even if the client has an old 'customPricing' property, the simulation uses the new global rules.
+    const newFee = useMemo(() => {
+        return calculateClientMonthlyFee(client, settings, notification.newPricing);
+    }, [client, notification.newPricing, settings]);
+
+    return (
+        <Card className="border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-900/20">
+            <CardHeader>
+                <div className="flex items-center gap-3">
+                    <CurrencyDollarIcon className="w-6 h-6 text-orange-600" />
+                    <h3 className="text-xl font-semibold text-orange-700 dark:text-orange-300">Aviso de Reajuste de Preço</h3>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <p className="mb-2">Informamos que haverá um reajuste nos valores dos nossos serviços.</p>
+                <p className="mb-4">
+                    A partir de <strong>{toDate(notification.effectiveDate)?.toLocaleDateString('pt-BR')}</strong>, o valor da sua mensalidade será atualizado.
+                </p>
+                <div className="flex items-center gap-4 text-sm sm:text-base">
+                    <div className="p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-orange-200 dark:border-orange-800">
+                        <p className="text-gray-500 dark:text-gray-400 text-xs uppercase">Valor Atual</p>
+                        <p className="font-bold text-gray-700 dark:text-gray-200 line-through decoration-red-500">R$ {currentFee.toFixed(2)}</p>
+                    </div>
+                    <div className="text-orange-500 font-bold text-xl">→</div>
+                    <div className="p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border-2 border-orange-500">
+                        <p className="text-orange-600 dark:text-orange-400 text-xs uppercase font-bold">Novo Valor</p>
+                        <p className="font-bold text-xl text-orange-700 dark:text-orange-300">R$ {newFee.toFixed(2)}</p>
+                    </div>
+                </div>
+                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                    * O novo valor será aplicado automaticamente na fatura com vencimento posterior à data efetiva.
+                </p>
+            </CardContent>
+        </Card>
     );
 };
 

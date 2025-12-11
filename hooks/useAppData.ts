@@ -82,6 +82,8 @@ const defaultSettings: Settings = {
         advancePaymentTitle: "Economize com Pagamento Adiantado!",
         advancePaymentSubtitleVIP: "Pague vários meses de uma vez e economize (cotas limitadas).",
         advancePaymentSubtitleSimple: "Pague vários meses de uma vez e se sinta um VIP com desconto especial.",
+        maintenanceModeEnabled: false,
+        maintenanceMessage: "O aplicativo está em manutenção temporária para melhorias. Voltaremos em breve!",
     },
     automation: {
         replenishmentStockThreshold: 2,
@@ -232,7 +234,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     
     // Price Change Automation
     useEffect(() => {
-        if (!isUserAdmin || pendingPriceChanges.length === 0) return;
+        // Ensure settings are loaded before applying changes to prevent overwriting with null/stale data
+        if (!isUserAdmin || pendingPriceChanges.length === 0 || !settings) return;
 
         const applyOverduePriceChanges = async () => {
             const now = firebase.firestore.Timestamp.now();
@@ -248,6 +251,21 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 try {
                     const batch = db.batch();
                     const settingsRef = db.collection('settings').doc('main');
+                    
+                    // CRITICAL: Snapshot pricing for VIP clients so they don't suffer the price increase.
+                    // VIP clients who are active and don't already have a custom pricing set should be locked to the current (old) settings.
+                    const activeVips = clients.filter(c => c.clientStatus === 'Ativo' && c.plan === 'VIP');
+                    
+                    activeVips.forEach(vip => {
+                        // If client doesn't have customPricing, lock them to the current pricing before it updates.
+                        // If they already have customPricing, they are already protected/customized.
+                        if (!vip.customPricing) {
+                            const vipRef = db.collection('clients').doc(vip.id);
+                            batch.update(vipRef, { customPricing: settings.pricing });
+                        }
+                    });
+
+                    // Update global pricing for Simples clients and new contracts
                     batch.set(settingsRef, { pricing: change.newPricing }, { merge: true });
 
                     const changeRef = db.collection('pendingPriceChanges').doc(change.id);
@@ -264,7 +282,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         const timer = setTimeout(applyOverduePriceChanges, 3000); // Small delay to ensure all data is loaded
         return () => clearTimeout(timer);
 
-    }, [isUserAdmin, pendingPriceChanges]);
+    }, [isUserAdmin, pendingPriceChanges, settings, clients]);
 
     useEffect(() => {
         if (!isUserAdmin && !isUserTechnician) return;
@@ -407,8 +425,20 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             console.error("Error fetching client pool events:", error);
             setLoadingState('poolEvents', false);
         });
+        
+        // Also fetch pending price changes for clients so they can be notified
+        const unsubPendingChanges = db.collection('pendingPriceChanges')
+            .where('status', '==', 'pending')
+            .onSnapshot(snapshot => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
+                setPendingPriceChanges(data);
+                setLoadingState('pendingPriceChanges', false);
+            }, (error: Error) => {
+                 console.error("Error fetching pending price changes for client:", error);
+                 setLoadingState('pendingPriceChanges', false);
+            });
 
-        return () => { unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); };
+        return () => { unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPendingChanges(); };
     }, [user, userData]);
 
     const createInitialAdmin = async (name: string, email: string, pass: string) => {
@@ -464,7 +494,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     };
 
 
-    const approveBudgetQuote = async (budgetId: string, password: string) => {
+    const approveBudgetQuote = async (budgetId: string, password: string, distanceFromHq?: number) => {
         const budgetDoc = await db.collection('pre-budgets').doc(budgetId).get();
         if (!budgetDoc.exists) throw new Error("Orçamento não encontrado.");
 
@@ -523,6 +553,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 pixKey: '',
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 lastVisitDuration: 0,
+                distanceFromHq: distanceFromHq || budget.distanceFromHq || 0,
             };
             
             // FIX: Conditionally add fidelityPlan to avoid saving 'undefined' to Firestore.

@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { calculateClientMonthlyFee, calculateVolume, normalizeDimension } from '../../utils/calculations';
+import { calculateClientMonthlyFee, calculateVolume, normalizeDimension, calculateDrivingDistance } from '../../utils/calculations';
 import { AppContextType, Client, ClientProduct, PlanType, ClientStatus, PoolUsageStatus, PaymentStatus, Product, Address, Settings, Bank, FidelityPlan, Visit, StockProduct } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -8,6 +9,7 @@ import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { ClientStockManager } from '../../components/ClientStockManager';
+import { SparklesIcon } from '../../constants';
 
 interface ClientsViewProps {
     appContext: AppContextType;
@@ -232,6 +234,7 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
     const { client, isOpen, onClose, onSave, onDelete, onMarkPaid, isSaving, isDeleting, stockProducts, banks, settings } = props;
     const [clientData, setClientData] = useState<ClientFormData>(client);
     const [errors, setErrors] = useState<{ dueDate?: string; pixKey?: string; }>({});
+    const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
 
      useEffect(() => {
         setClientData(client);
@@ -352,6 +355,31 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
         onMarkPaid(clientData);
     };
 
+    const handleAutoCalculateDistance = async () => {
+        if (!settings) return;
+
+        setIsCalculatingDistance(true);
+        try {
+            const origin = `${settings.baseAddress.street}, ${settings.baseAddress.number}, ${settings.baseAddress.city} - ${settings.baseAddress.state}`;
+            const destination = `${clientData.address.street}, ${clientData.address.number}, ${clientData.address.city} - ${clientData.address.state}`;
+
+            const km = await calculateDrivingDistance(origin, destination);
+
+            if (km >= 0) {
+                setClientData(prev => ({ ...prev, distanceFromHq: km }));
+                alert(`Distância calculada: ${km} km`);
+            } else {
+                throw new Error("Erro ao calcular distância.");
+            }
+
+        } catch (error: any) {
+            console.error(error);
+            alert("Erro ao calcular distância automaticamente. Verifique os endereços e tente novamente.");
+        } finally {
+            setIsCalculatingDistance(false);
+        }
+    };
+
     const calculatedFee = useMemo(() => {
         if (!settings) return 0;
         // Use a temporary client object with updated volume for accurate calculation
@@ -417,6 +445,26 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                         <Input containerClassName="sm:col-span-4" label="Bairro" name="address.neighborhood" value={clientData.address.neighborhood} onChange={handleChange} />
                         <Input containerClassName="sm:col-span-4" label="Cidade" name="address.city" value={clientData.address.city} onChange={handleChange} />
                         <Input containerClassName="sm:col-span-2" label="UF" name="address.state" value={clientData.address.state} onChange={handleChange} maxLength={2} />
+                        
+                        <div className="sm:col-span-2 flex items-end gap-2">
+                            <Input 
+                                label="Distância da Base (Km)" 
+                                name="distanceFromHq" 
+                                type="number" 
+                                value={clientData.distanceFromHq || 0} 
+                                onChange={handleChange} 
+                                containerClassName="mb-0 flex-grow"
+                            />
+                            <Button 
+                                type="button" 
+                                onClick={handleAutoCalculateDistance} 
+                                isLoading={isCalculatingDistance}
+                                variant="secondary"
+                                title="Calcular distância com Mapa"
+                            >
+                                <SparklesIcon className="w-5 h-5 text-purple-600" />
+                            </Button>
+                        </div>
                     </div>
                 </fieldset>
 

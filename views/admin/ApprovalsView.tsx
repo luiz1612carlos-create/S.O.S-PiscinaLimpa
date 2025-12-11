@@ -6,6 +6,8 @@ import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
+import { SparklesIcon } from '../../constants';
+import { calculateDrivingDistance } from '../../utils/calculations';
 
 interface ApprovalsViewProps {
     appContext: AppContextType;
@@ -17,16 +19,19 @@ const formatAddress = (address?: Address) => {
 };
 
 const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
-    const { budgetQuotes, loading, approveBudgetQuote, rejectBudgetQuote, showNotification } = appContext;
+    const { budgetQuotes, loading, approveBudgetQuote, rejectBudgetQuote, showNotification, settings } = appContext;
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [approvalBudget, setApprovalBudget] = useState<BudgetQuote | null>(null);
     const [password, setPassword] = useState('');
+    const [distance, setDistance] = useState<number>(0);
+    const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
 
     const handleApproveClick = (budgetId: string) => {
         const budget = budgetQuotes.find(b => b.id === budgetId);
         if (budget) {
             setApprovalBudget(budget);
             setPassword('');
+            setDistance(budget.distanceFromHq || 0);
         }
     };
 
@@ -40,10 +45,11 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
 
         setProcessingId(approvalBudget.id);
         try {
-            await approveBudgetQuote(approvalBudget.id, password);
+            await approveBudgetQuote(approvalBudget.id, password, distance);
             showNotification('Orçamento aprovado com sucesso!', 'success');
             setApprovalBudget(null);
             setPassword('');
+            setDistance(0);
         } catch (error: any) {
             showNotification(error.message || 'Erro ao aprovar orçamento.', 'error');
         } finally {
@@ -60,6 +66,34 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
             showNotification(error.message || 'Erro ao rejeitar orçamento.', 'error');
         } finally {
             setProcessingId(null);
+        }
+    };
+
+    const handleAutoCalculateDistance = async () => {
+        if (!settings || !approvalBudget) {
+            showNotification('Configurações ou dados do cliente incompletos.', 'error');
+            return;
+        }
+
+        setIsCalculatingDistance(true);
+        try {
+            const origin = `${settings.baseAddress.street}, ${settings.baseAddress.number}, ${settings.baseAddress.city} - ${settings.baseAddress.state}`;
+            const destination = `${approvalBudget.address.street}, ${approvalBudget.address.number}, ${approvalBudget.address.city} - ${approvalBudget.address.state}`;
+
+            const km = await calculateDrivingDistance(origin, destination);
+
+            if (km >= 0) {
+                setDistance(km);
+                showNotification(`Distância calculada: ${km} km`, 'success');
+            } else {
+                throw new Error("Erro ao calcular distância.");
+            }
+
+        } catch (error: any) {
+            console.error(error);
+            showNotification("Erro ao calcular distância automaticamente. Tente inserir manualmente.", 'error');
+        } finally {
+            setIsCalculatingDistance(false);
         }
     };
     
@@ -95,8 +129,27 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
                     }
                 >
                      <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                        Defina uma senha inicial para o acesso do cliente ao painel.
+                        Configure os detalhes finais para o acesso do cliente.
                     </p>
+                    <div className="flex items-end gap-2 mb-4">
+                        <Input
+                            label="Distância da Base (Km)"
+                            type="number"
+                            value={distance}
+                            onChange={(e) => setDistance(parseFloat(e.target.value) || 0)}
+                            placeholder="Ex: 5.5"
+                            containerClassName="mb-0 flex-grow"
+                        />
+                        <Button 
+                            type="button" 
+                            onClick={handleAutoCalculateDistance} 
+                            isLoading={isCalculatingDistance}
+                            variant="secondary"
+                            title="Calcular distância com Mapa"
+                        >
+                            <SparklesIcon className="w-5 h-5 text-purple-600" />
+                        </Button>
+                    </div>
                     <Input
                         label="Senha Inicial"
                         type="password"
