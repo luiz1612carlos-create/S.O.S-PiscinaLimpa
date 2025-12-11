@@ -59,25 +59,37 @@ const App: React.FC = () => {
     const renderContent = () => {
         // Maintenance Mode Check for Clients
         if (userData?.role === 'client' && appData.settings?.features.maintenanceModeEnabled) {
-            return (
-                <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center p-4 text-center">
-                    <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
-                        <div className="flex justify-center mb-6">
-                            <SettingsIcon className="w-24 h-24 text-yellow-500 animate-spin-slow" style={{ animationDuration: '3s' }} />
-                        </div>
-                        <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-4">Em Manutenção</h2>
-                        <p className="text-gray-600 dark:text-gray-400 mb-6">
-                            {appData.settings.features.maintenanceMessage || "O sistema está passando por melhorias. Voltaremos em breve!"}
-                        </p>
-                        <div className="flex justify-center gap-4">
-                            <Button onClick={logout} variant="secondary">
-                                <LogoutIcon className="w-5 h-5 mr-2" />
-                                Sair
-                            </Button>
+            
+            // If we are still fetching the client data to check permissions, show spinner
+            if (appData.loading.clients) {
+                return <div className="h-screen w-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900"><Spinner size="lg" /></div>;
+            }
+
+            // Get the current logged-in client object from the pre-fetched list
+            const currentClient = appData.clients.find(c => c.uid === user.uid);
+            
+            // Only block if the client does NOT have explicit permission to access during maintenance
+            if (!currentClient?.allowAccessInMaintenance) {
+                return (
+                    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center p-4 text-center">
+                        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
+                            <div className="flex justify-center mb-6">
+                                <SettingsIcon className="w-24 h-24 text-yellow-500 animate-spin-slow" style={{ animationDuration: '3s' }} />
+                            </div>
+                            <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-4">Em Manutenção</h2>
+                            <p className="text-gray-600 dark:text-gray-400 mb-6">
+                                {appData.settings.features.maintenanceMessage || "O sistema está passando por melhorias. Voltaremos em breve!"}
+                            </p>
+                            <div className="flex justify-center gap-4">
+                                <Button onClick={logout} variant="secondary">
+                                    <LogoutIcon className="w-5 h-5 mr-2" />
+                                    Sair
+                                </Button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            );
+                );
+            }
         }
 
         if (userData?.role === 'admin') {

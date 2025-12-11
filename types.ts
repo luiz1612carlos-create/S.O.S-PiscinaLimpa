@@ -45,6 +45,7 @@ export interface Bank {
     id: string;
     name: string;
     pixKey?: string;
+    pixKeyRecipient?: string;
 }
 
 export interface Transaction {
@@ -102,7 +103,9 @@ export interface Client {
     };
     stock: ClientProduct[];
     pixKey?: string;
+    pixKeyRecipient?: string;
     bankId?: string;
+    allowAccessInMaintenance?: boolean; // Permite acesso durante modo de manutenção
     createdAt: any; // Firestore Timestamp
     visitHistory?: Visit[];
     lastVisitDuration?: number; // in minutes
@@ -236,6 +239,8 @@ export interface Settings {
     logoTransforms?: LogoTransforms;
     baseAddress: Address;
     pixKey: string;
+    pixKeyRecipient?: string;
+    whatsappMessageTemplate?: string;
     pricing: {
         perKm: number;
         wellWaterFee: number;

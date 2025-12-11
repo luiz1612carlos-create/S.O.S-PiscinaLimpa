@@ -1,3 +1,4 @@
+
 import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { AppContextType, Client, Transaction } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -34,7 +35,7 @@ const toDate = (timestamp: any): Date | null => {
 
 
 const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
-    const { clients, orders, budgetQuotes, products, transactions, loading, resetReportsData, settings } = appContext;
+    const { clients, orders, budgetQuotes, products, transactions, loading, resetReportsData, settings, banks } = appContext;
     
     const [isDuesModalOpen, setIsDuesModalOpen] = useState(false);
     const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
@@ -102,10 +103,62 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
 
     const handleOpenWhatsAppModal = (client: Client) => {
         if (!settings) return;
+        
+        // Resolve PIX Key and Recipient: Client Specific > Client's Bank > Global Company Key
+        let pixKey = client.pixKey;
+        let pixRecipient = client.pixKeyRecipient;
+
+        if (!pixKey && client.bankId) {
+            const clientBank = banks.find(b => b.id === client.bankId);
+            if (clientBank && clientBank.pixKey) {
+                pixKey = clientBank.pixKey;
+                // If bank has a specific recipient, use it. If not, don't fallback to client recipient if key changed.
+                // We'll fallback to global if bank doesn't have one later.
+                if (clientBank.pixKeyRecipient) {
+                    pixRecipient = clientBank.pixKeyRecipient;
+                }
+            }
+        }
+        if (!pixKey) {
+            pixKey = settings.pixKey;
+            // Fallback to global recipient if no specific recipient was found
+            if (!pixRecipient) {
+                pixRecipient = settings.pixKeyRecipient;
+            }
+        }
+        
+        // Final fallback for recipient if key was found but recipient wasn't explicitly set in that specific object
+        if (!pixRecipient) {
+             pixRecipient = settings.pixKeyRecipient || settings.companyName;
+        }
+
         const dueDate = new Date(client.payment.dueDate).toLocaleDateString('pt-BR');
         const fee = calculateClientMonthlyFee(client, settings).toFixed(2).replace('.', ',');
-        const defaultMessage = `Olá ${client.name}, tudo bem? Passando para lembrar sobre o vencimento da sua mensalidade no valor de R$${fee} no dia ${dueDate}. Agradecemos a parceria!`;
-        setWhatsAppMessage(defaultMessage);
+        
+        // Intelligent Template Logic
+        // If the user's saved template doesn't have {DESTINATARIO}, we auto-append it for better UX.
+        let template = settings.whatsappMessageTemplate;
+        
+        if (!template) {
+             template = "Olá {CLIENTE}, tudo bem? Passando para lembrar sobre o vencimento da sua mensalidade no valor de R$ {VALOR} no dia {VENCIMENTO}. \n\nChave PIX: {PIX} \nDestinatário: {DESTINATARIO}\n\nAgradecemos a parceria!";
+        } else if (!template.includes('{DESTINATARIO}')) {
+             // If {PIX} is present, put recipient right after it
+             if (template.includes('{PIX}')) {
+                 template = template.replace('{PIX}', '{PIX} \nDestinatário: {DESTINATARIO}');
+             } else {
+                 // Otherwise append to end
+                 template += '\nDestinatário: {DESTINATARIO}';
+             }
+        }
+        
+        const message = template
+            .replace('{CLIENTE}', client.name)
+            .replace('{VALOR}', fee)
+            .replace('{VENCIMENTO}', dueDate)
+            .replace('{PIX}', pixKey || "Consulte-nos")
+            .replace('{DESTINATARIO}', pixRecipient || "Empresa");
+
+        setWhatsAppMessage(message);
         setSelectedClientForWhatsApp(client);
         setIsWhatsAppModalOpen(true);
     };
@@ -282,7 +335,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
                 <textarea
                     value={whatsAppMessage}
                     onChange={(e) => setWhatsAppMessage(e.target.value)}
-                    rows={5}
+                    rows={8}
                     className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
             </Modal>

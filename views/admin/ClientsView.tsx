@@ -424,6 +424,19 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                          />
                          <Select label="Status do Cliente" name="clientStatus" value={clientData.clientStatus} onChange={handleChange} options={[{value: 'Ativo', label: 'Ativo'}, {value: 'Pendente', label: 'Pendente'}]} />
                     </div>
+                    <div className="mt-4 border-t pt-4 dark:border-gray-700">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                name="allowAccessInMaintenance"
+                                checked={!!clientData.allowAccessInMaintenance}
+                                onChange={handleCheckboxChange}
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="text-sm font-medium">Permitir acesso durante manutenção (VIP/Admin Override)</span>
+                        </label>
+                        <p className="text-xs text-gray-500 mt-1 ml-7">Se marcado, este cliente poderá acessar o aplicativo mesmo quando o "Modo Manutenção" estiver ativado nas configurações gerais.</p>
+                    </div>
                 </fieldset>
 
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
@@ -543,6 +556,15 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                             placeholder="Deixe em branco para usar a chave padrão"
                             error={errors.pixKey}
                         />
+                        <div className="col-span-2 md:col-span-1">
+                            <Input
+                                label="Nome do Destinatário (Opcional)"
+                                name="pixKeyRecipient"
+                                value={clientData.pixKeyRecipient || ''}
+                                onChange={handleChange}
+                                placeholder="Nome do beneficiário para este cliente"
+                            />
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 items-start">
                         <div className="space-y-4">

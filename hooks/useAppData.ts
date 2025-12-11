@@ -54,6 +54,8 @@ const defaultSettings: Settings = {
         zip: "12345-000",
     },
     pixKey: "seu-pix@email.com",
+    pixKeyRecipient: "S.O.S Piscina Limpa",
+    whatsappMessageTemplate: "Olá {CLIENTE}, tudo bem? Passando para lembrar sobre o vencimento da sua mensalidade no valor de R$ {VALOR} no dia {VENCIMENTO}. \n\nChave PIX: {PIX} \nDestinatário: {DESTINATARIO}\n\nAgradecemos a parceria!",
     pricing: {
         perKm: 1.5,
         wellWaterFee: 50,
@@ -385,6 +387,20 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
      // Client-specific data fetching
     useEffect(() => {
         if (userData?.role !== 'client' || !user) return;
+        
+        // Automatically fetch and listen to the client document if user is a client.
+        // This ensures App.tsx has access to the client data (like maintenance permission) immediately.
+        const unsubClient = db.collection('clients').where('uid', '==', user.uid).limit(1).onSnapshot(snapshot => {
+            if (!snapshot.empty) {
+                const doc = snapshot.docs[0];
+                const clientData = { id: doc.id, ...doc.data() } as Client;
+                setClients([clientData]);
+            }
+            setLoadingState('clients', false);
+        }, (error: Error) => {
+            console.error("Error fetching client doc:", error);
+            setLoadingState('clients', false);
+        });
 
         const unsubOrders = db.collection('orders').where('clientId', '==', user.uid).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
@@ -438,7 +454,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                  setLoadingState('pendingPriceChanges', false);
             });
 
-        return () => { unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPendingChanges(); };
+        return () => { unsubClient(); unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPendingChanges(); };
     }, [user, userData]);
 
     const createInitialAdmin = async (name: string, email: string, pass: string) => {

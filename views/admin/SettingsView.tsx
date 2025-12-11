@@ -5,7 +5,7 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
-import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, ChartBarIcon, CurrencyDollarIcon } from '../../constants';
+import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, ChartBarIcon, CurrencyDollarIcon, SparklesIcon } from '../../constants';
 import { Modal } from '../../components/Modal';
 import { Select } from '../../components/Select';
 import { calculateClientMonthlyFee } from '../../utils/calculations';
@@ -268,11 +268,11 @@ const UserManager = ({ appContext }: { appContext: AppContextType }) => {
 const BankManager = ({ appContext }: { appContext: AppContextType }) => {
     const { banks, saveBank, deleteBank, showNotification } = appContext;
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [currentBank, setCurrentBank] = useState<Omit<Bank, 'id'> | (Bank & { pixKey?: string }) | null>(null);
+    const [currentBank, setCurrentBank] = useState<Omit<Bank, 'id'> | (Bank & { pixKey?: string, pixKeyRecipient?: string }) | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     const handleOpenModal = (bank: Bank | null = null) => {
-        setCurrentBank(bank || { name: '', pixKey: '' });
+        setCurrentBank(bank || { name: '', pixKey: '', pixKeyRecipient: '' });
         setIsModalOpen(true);
     };
 
@@ -355,6 +355,12 @@ const BankManager = ({ appContext }: { appContext: AppContextType }) => {
                         onChange={(e) => setCurrentBank(prev => ({...prev!, pixKey: e.target.value}))}
                         placeholder="Chave PIX da conta"
                     />
+                    <Input 
+                        label="Nome do Destinatário (Opcional)" 
+                        value={currentBank.pixKeyRecipient || ''} 
+                        onChange={(e) => setCurrentBank(prev => ({...prev!, pixKeyRecipient: e.target.value}))}
+                        placeholder="Nome do beneficiário"
+                    />
                 </Modal>
              )}
         </div>
@@ -422,7 +428,7 @@ const FidelityPlanEditor = ({ localSettings, setLocalSettings }: any) => {
     };
 
     const removeFidelityPlan = (index: number) => {
-        const newPlans = localSettings.fidelityPlans.filter((_: any, i: number) => i !== index);
+        const newPlans = localSettings.fidelityPlans.filter((_, i) => i !== index);
         setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
     };
 
@@ -523,7 +529,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
     }
 
-    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing' | 'logoTransforms') => {
+    const handleSimpleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>, section?: keyof Settings | 'features' | 'automation' | 'pricing' | 'logoTransforms') => {
         const { name, value, type } = e.target;
         
         let finalValue: any = value;
@@ -608,7 +614,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     const addFidelityPlan = () => {
         const newPlan = { id: Date.now().toString(), months: 0, discountPercent: 0 };
         const newPlans = [...localSettings.fidelityPlans, newPlan];
-        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
+        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
     };
 
     const removeFidelityPlan = (index: number) => {
@@ -650,6 +656,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         setLogoFile(null);
         setLogoPreview(null);
         setLocalSettings(prev => ({ ...prev!, logoUrl: undefined }));
+    };
+
+    const handleResetTemplate = () => {
+        const defaultTemplate = "Olá {CLIENTE}, tudo bem? Passando para lembrar sobre o vencimento da sua mensalidade no valor de R$ {VALOR} no dia {VENCIMENTO}. \n\nChave PIX: {PIX} \nDestinatário: {DESTINATARIO}\n\nAgradecemos a parceria!";
+        handleSimpleChange({ target: { name: 'whatsappMessageTemplate', value: defaultTemplate } } as any);
+        showNotification('Modelo de mensagem restaurado para o padrão.', 'info');
     };
 
     const handleSave = async () => {
@@ -782,6 +794,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                             <Input label="Título Principal (Tela Inicial)" name="mainTitle" value={localSettings.mainTitle || ''} onChange={(e) => handleSimpleChange(e)} />
                             <Input label="Subtítulo (Tela Inicial)" name="mainSubtitle" value={localSettings.mainSubtitle || ''} onChange={(e) => handleSimpleChange(e)} />
                             <Input label="Chave PIX Padrão" name="pixKey" value={localSettings.pixKey} onChange={(e) => handleSimpleChange(e)} />
+                            <Input label="Nome do Destinatário PIX (Padrão)" name="pixKeyRecipient" value={localSettings.pixKeyRecipient || ''} onChange={(e) => handleSimpleChange(e)} />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -900,6 +913,40 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     </fieldset>
                 </div>
                 
+                 {/* Mensagens e Notificações */}
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <h3 className="text-xl font-semibold mb-4">Configuração de Mensagens</h3>
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Template de Cobrança WhatsApp
+                            </label>
+                            <Button size="sm" variant="secondary" onClick={handleResetTemplate}>
+                                <SparklesIcon className="w-4 h-4 mr-1 text-yellow-500" />
+                                Restaurar Modelo Padrão
+                            </Button>
+                        </div>
+                        <textarea
+                            name="whatsappMessageTemplate"
+                            value={localSettings.whatsappMessageTemplate || ''}
+                            onChange={(e) => handleSimpleChange(e)}
+                            rows={5}
+                            className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-2"
+                            placeholder="Olá {CLIENTE}, ..."
+                        />
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                            <p>Variáveis disponíveis para substituição:</p>
+                            <ul className="list-disc list-inside mt-1">
+                                <li><strong>{`{CLIENTE}`}</strong>: Nome do Cliente</li>
+                                <li><strong>{`{VALOR}`}</strong>: Valor da mensalidade (ex: 150,00)</li>
+                                <li><strong>{`{VENCIMENTO}`}</strong>: Data de vencimento (dd/mm/aaaa)</li>
+                                <li><strong>{`{PIX}`}</strong>: Chave PIX (usa a do cliente, do banco do cliente ou a da empresa)</li>
+                                <li><strong>{`{DESTINATARIO}`}</strong>: Nome do beneficiário da chave PIX</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Bank Management */}
                 <BankManager appContext={appContext} />
 
