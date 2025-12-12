@@ -2,9 +2,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
-import { AppContextType, PlanType, Settings, FidelityPlan, BudgetQuote } from '../../types';
+import { AppContextType, PlanType, Settings, FidelityPlan, BudgetQuote, Client } from '../../types';
 import { Spinner } from '../../components/Spinner';
-import { normalizeDimension, calculateDrivingDistance } from '../../utils/calculations';
+import { normalizeDimension, calculateDrivingDistance, calculateClientMonthlyFee } from '../../utils/calculations';
 import BudgetSuccessView from './BudgetSuccessView';
 import { Modal } from '../../components/Modal';
 import { GuidedTour, TourStep } from '../../components/GuidedTour';
@@ -143,22 +143,17 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const monthlyFee = useMemo(() => {
         if (!settings || volume <= 0) return 0;
 
-        const { pricing } = settings;
-        let basePrice = pricing.volumeTiers.find(tier => volume <= tier.upTo)?.price || pricing.volumeTiers[pricing.volumeTiers.length - 1].price;
-        
-        if (options.hasWellWater) basePrice += pricing.wellWaterFee;
-        if (options.isPartyPool) basePrice += pricing.partyPoolFee;
-        
-        // Add distance fee if calculated
-        if (distanceFromHq && pricing.perKm) {
-            basePrice += distanceFromHq * pricing.perKm;
-        }
-        
-        if (selectedPlanType === 'VIP' && selectedFidelityPlan && settings.features.vipPlanEnabled) {
-            basePrice = basePrice * (1 - selectedFidelityPlan.discountPercent / 100);
-        }
+        const tempClient: Partial<Client> = {
+            poolVolume: volume,
+            hasWellWater: options.hasWellWater,
+            isPartyPool: options.isPartyPool,
+            includeProducts: false, // Default for pre-budget
+            plan: selectedPlanType,
+            fidelityPlan: selectedFidelityPlan,
+            distanceFromHq: distanceFromHq || 0,
+        };
 
-        return basePrice;
+        return calculateClientMonthlyFee(tempClient, settings);
     }, [volume, options, selectedPlanType, selectedFidelityPlan, settings, distanceFromHq]);
 
     useEffect(() => {
@@ -204,7 +199,6 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             const origin = `${settings.baseAddress.street}, ${settings.baseAddress.number}, ${settings.baseAddress.city} - ${settings.baseAddress.state}`;
             const destination = `${street}, ${number}, ${neighborhood}, ${city} - ${state}`;
 
-            // Use the new precise function instead of AI
             const km = await calculateDrivingDistance(origin, destination);
 
             if (km >= 0) {
@@ -225,12 +219,16 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if(!isFormComplete) {
-            showNotification("Por favor, preencha todos os campos.", "error");
+            showNotification("Por favor, preencha todos os campos obrigatórios.", "error");
             return;
         }
+        if (volume <= 0) {
+             showNotification("As dimensões da piscina parecem incorretas (Volume zerado). Use ponto ou vírgula para decimais.", "error");
+             return;
+        }
         if(!monthlyFee || monthlyFee <= 0) {
-            showNotification("Por favor, preencha as dimensões da piscina corretamente.", "error");
-            return;
+             showNotification("Não foi possível calcular o preço. Verifique se o volume calculado está dentro das faixas atendidas pela empresa.", "error");
+             return;
         }
         if (distanceFromHq === null) {
             showNotification("Por favor, valide o endereço antes de finalizar.", "error");
@@ -322,7 +320,13 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                         <Input label="Comprimento" name="length" type="text" inputMode="decimal" value={formData.length} onChange={handleInputChange} required placeholder="ex: 8" />
                         <Input label="Profundidade Média" name="depth" type="text" inputMode="decimal" value={formData.depth} onChange={handleInputChange} required placeholder="ex: 1.4 ou 1,4" />
                     </div>
-                     {volume > 0 && <p className="text-center mt-2 text-lg font-medium text-secondary-600 dark:text-secondary-400">Volume: {volume.toLocaleString('pt-BR')} litros</p>}
+                     {volume > 0 ? (
+                        <div className="text-center mt-2 p-2 bg-blue-50 dark:bg-blue-900/30 rounded">
+                            <p className="text-lg font-medium text-secondary-600 dark:text-secondary-400">Volume Calculado: {volume.toLocaleString('pt-BR')} litros</p>
+                        </div>
+                     ) : (formData.width && formData.length && formData.depth) ? (
+                         <p className="text-center text-sm text-red-500 mt-2">Dimensões inválidas. Verifique se usou apenas números e vírgula/ponto.</p>
+                     ) : null}
                 </fieldset>
 
                 <fieldset data-tour-id="options" className="border p-4 rounded-md dark:border-gray-600">

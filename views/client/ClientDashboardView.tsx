@@ -24,25 +24,18 @@ const toDate = (timestamp: any): Date | null => {
 
 const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, appContext }) => {
     const { user, changePassword, showNotification } = authContext;
-    const { getClientData, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent, pendingPriceChanges } = appContext;
-    const [clientData, setClientData] = useState<Client | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { clients, loading, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent, pendingPriceChanges } = appContext;
     
+    // Use client data from context instead of local fetch to prevent race conditions/loops
+    const clientData = useMemo(() => {
+        return clients.find(c => c.uid === user.uid) || null;
+    }, [clients, user.uid]);
+
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isSavingPassword, setIsSavingPassword] = useState(false);
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
 
-
-    useEffect(() => {
-        const fetchClientData = async () => {
-            setLoading(true);
-            const data = await getClientData();
-            setClientData(data);
-            setLoading(false);
-        };
-        fetchClientData();
-    }, [getClientData]);
     
     const nextVisit = useMemo(() => {
         if (!clientData || !routes) return null;
@@ -173,11 +166,17 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     }, [settings?.recessPeriods]);
 
 
-    if (loading || !settings) {
+    if ((loading.clients || loading.settings) || !settings) {
         return <div className="flex justify-center items-center h-64"><Spinner size="lg" /></div>;
     }
+    
     if (!clientData) {
-        return <p>Não foi possível carregar os dados do cliente.</p>;
+        return (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                <p>Não foi possível carregar os dados do cliente.</p>
+                <p className="text-sm">Se o problema persistir, entre em contato com o suporte.</p>
+            </div>
+        );
     }
 
     const clientBank = banks.find(b => b.id === clientData.bankId);

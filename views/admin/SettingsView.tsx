@@ -584,7 +584,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         }));
     };
     
-    const handleTierChange = (index: number, field: 'upTo' | 'price', value: number) => {
+    const handleTierChange = (index: number, field: 'min' | 'max' | 'price', value: number) => {
         setLocalSettings(prev => {
              const newPricing = { ...prev!.pricing };
              const newTiers = prev!.pricing.volumeTiers.map((t, i) => 
@@ -596,7 +596,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     };
 
     const addTier = () => {
-        const newTiers = [...localSettings.pricing.volumeTiers, {upTo: 0, price: 0}];
+        const newTiers = [...localSettings.pricing.volumeTiers, {min: 0, max: 0, price: 0}];
         setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
     };
 
@@ -1012,8 +1012,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                         <h4 className="font-semibold mt-6 mb-2">Faixas de Preço por Volume</h4>
                         {localSettings.pricing.volumeTiers.map((tier, index) => (
                             <div key={index} className="flex items-center gap-2 mb-2">
-                            <span>Até</span>
-                            <Input label="" type="number" value={tier.upTo} onChange={(e) => handleTierChange(index, 'upTo', +e.target.value)} containerClassName="mb-0" />
+                            <span>De</span>
+                            <Input label="" type="number" value={tier.min} onChange={(e) => handleTierChange(index, 'min', +e.target.value)} containerClassName="mb-0" />
+                            <span>até</span>
+                            <Input label="" type="number" value={tier.max} onChange={(e) => handleTierChange(index, 'max', +e.target.value)} containerClassName="mb-0" />
                             <span>litros, custa R$</span>
                             <Input label="" type="number" value={tier.price} onChange={(e) => handleTierChange(index, 'price', +e.target.value)} containerClassName="mb-0" />
                             <Button variant="danger" size="sm" onClick={() => removeTier(index)}><TrashIcon className="w-4 h-4"/></Button>

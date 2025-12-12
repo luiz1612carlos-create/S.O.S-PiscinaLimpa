@@ -247,7 +247,8 @@ export interface Settings {
         productsFee: number;
         partyPoolFee: number;
         volumeTiers: {
-            upTo: number;
+            min: number;
+            max: number;
             price: number;
         }[];
     };

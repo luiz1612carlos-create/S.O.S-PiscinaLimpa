@@ -384,7 +384,10 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
         if (!settings) return 0;
         // Use a temporary client object with updated volume for accurate calculation
         const tempClientForCalc = { ...clientData, poolVolume: volume };
-        return calculateClientMonthlyFee(tempClientForCalc, settings);
+        // FORCE GLOBAL PRICING: Pass settings.pricing as the override argument (3rd arg).
+        // This ensures that when editing, we see the price based on CURRENT settings,
+        // ignoring any 'customPricing' lock the client might have.
+        return calculateClientMonthlyFee(tempClientForCalc, settings, settings.pricing);
     }, [clientData, volume, settings]);
 
     const planOptions = useMemo(() => {

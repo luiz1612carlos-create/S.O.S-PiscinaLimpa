@@ -62,9 +62,9 @@ const defaultSettings: Settings = {
         productsFee: 75,
         partyPoolFee: 100,
         volumeTiers: [
-            { upTo: 20000, price: 150 },
-            { upTo: 50000, price: 250 },
-            { upTo: 100000, price: 400 },
+            { min: 0, max: 20000, price: 150 },
+            { min: 20001, max: 50000, price: 250 },
+            { min: 50001, max: 100000, price: 400 },
         ],
     },
     plans: {
