@@ -619,7 +619,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
 
     const removeFidelityPlan = (index: number) => {
         const newPlans = localSettings.fidelityPlans.filter((_, i) => i !== index);
-        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
+        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
     };
 
     const handleAdvanceOptionChange = (index: number, field: keyof AdvancePaymentOption, value: number) => {

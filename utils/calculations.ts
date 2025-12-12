@@ -47,26 +47,69 @@ export const calculateVolume = (
 
 export const calculateDrivingDistance = async (origin: string, destination: string): Promise<number> => {
     try {
-        const getCoords = async (address: string) => {
-            await new Promise(r => setTimeout(r, Math.random() * 500)); // Pequeno delay para evitar rate limit
-            
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`, {
-                headers: {
-                    'User-Agent': 'PiscinaLimpaApp/1.0'
+        // Função auxiliar para buscar coordenadas com tratamento de erro silencioso
+        const fetchCoords = async (query: string): Promise<{ lat: string, lon: string } | null> => {
+            // Pequeno delay para evitar rate limit do Nominatim (OpenStreetMap)
+            await new Promise(r => setTimeout(r, Math.random() * 500)); 
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`, {
+                    headers: { 'User-Agent': 'PiscinaLimpaApp/1.0' }
+                });
+                
+                if (!response.ok) return null;
+                
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    return { lat: data[0].lat, lon: data[0].lon };
                 }
-            });
-            if (!response.ok) throw new Error("Erro na geocodificação");
-            
-            const data = await response.json();
-            if (data && data.length > 0) {
-                return { lat: data[0].lat, lon: data[0].lon };
+            } catch (e) {
+                console.warn("Falha na requisição de geocodificação:", e);
             }
+            return null;
+        };
+
+        // Lógica principal de busca com Fallbacks progressivos
+        const getBestCoords = async (address: string): Promise<{ lat: string, lon: string }> => {
+            // Limpeza: remove partes vazias causadas por ,,
+            const parts = address.split(',').map(p => p.trim()).filter(p => p !== '');
+            const cleanAddress = parts.join(', ');
+            
+            // Tentativa 1: Endereço completo limpo
+            let coords = await fetchCoords(cleanAddress);
+            if (coords) return coords;
+
+            // Tentativa 2: Remover o número (Assume que é o 2º elemento se houver mais de 2 partes)
+            // Ex: Rua X, 123, Bairro Y, Cidade... -> Rua X, Bairro Y, Cidade...
+            if (parts.length > 2) {
+                const noNumberParts = [parts[0], ...parts.slice(2)];
+                coords = await fetchCoords(noNumberParts.join(', '));
+                if (coords) return coords;
+            }
+
+            // Tentativa 3: Apenas Rua e Cidade/Estado (1º e último elemento)
+            // Remove número e bairro que podem estar com grafia diferente
+            if (parts.length >= 2) {
+                const street = parts[0];
+                const cityState = parts[parts.length - 1];
+                coords = await fetchCoords(`${street}, ${cityState}`);
+                if (coords) return coords;
+            }
+            
+            // Tentativa 4 (Fallback Final): Apenas Cidade e Estado (Último elemento)
+            // Isso evita o erro fatal se o nome da rua estiver muito errado (ex: "florianoplis")
+            if (parts.length > 0) {
+                const cityState = parts[parts.length - 1];
+                coords = await fetchCoords(cityState);
+                if (coords) return coords;
+            }
+
             throw new Error(`Endereço não encontrado: ${address}`);
         };
 
-        const start = await getCoords(origin);
-        const end = await getCoords(destination);
+        const start = await getBestCoords(origin);
+        const end = await getBestCoords(destination);
 
+        // Cálculo da Rota via OSRM
         const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=false`;
         const routeResponse = await fetch(osrmUrl);
         const routeData = await routeResponse.json();
@@ -76,7 +119,7 @@ export const calculateDrivingDistance = async (origin: string, destination: stri
             return parseFloat((distanceInMeters / 1000).toFixed(1));
         }
         
-        // Fallback: Haversine
+        // Fallback: Haversine se a API de rotas falhar mas tivermos coordenadas
         const R = 6371; 
         const dLat = (parseFloat(end.lat) - parseFloat(start.lat)) * (Math.PI/180);
         const dLon = (parseFloat(end.lon) - parseFloat(start.lon)) * (Math.PI/180);
@@ -86,11 +129,14 @@ export const calculateDrivingDistance = async (origin: string, destination: stri
             Math.sin(dLon/2) * Math.sin(dLon/2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
         const d = R * c; 
-        return parseFloat((d * 1.3).toFixed(1));
+        return parseFloat((d * 1.3).toFixed(1)); // 1.3 fator de correção para rota urbana vs linha reta
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro ao calcular distância:", error);
-        throw new Error("Não foi possível calcular a distância exata. Verifique os endereços.");
+        if (error.message && error.message.includes('Endereço não encontrado')) {
+            throw error;
+        }
+        throw new Error("Não foi possível calcular a distância. Verifique a conexão ou os endereços.");
     }
 };
 
@@ -104,7 +150,6 @@ export const calculateClientMonthlyFee = (client: Partial<Client>, settings: Set
         return 0;
     }
     
-    // CRÍTICO: Garantir que 'min', 'max' e 'price' sejam números reais
     const safeTiers = pricing.volumeTiers.map(tier => ({
         min: Number(tier.min),
         max: Number(tier.max),
@@ -119,13 +164,10 @@ export const calculateClientMonthlyFee = (client: Partial<Client>, settings: Set
     if (tier) {
         basePrice = tier.price;
     } else {
-        // Se não encontrar uma faixa exata, verifica se o volume é maior que o maior max configurado
-        const sortedTiers = safeTiers.sort((a, b) => b.max - a.max); // Ordena decrescente pelo max
+        const sortedTiers = safeTiers.sort((a, b) => b.max - a.max);
         if (sortedTiers.length > 0 && client.poolVolume! > sortedTiers[0].max) {
-            // Volume excede a maior faixa, usa o preço da maior faixa como fallback
             basePrice = sortedTiers[0].price;
         } else {
-            // Caso raro: volume menor que o menor min ou buraco entre faixas
             basePrice = 0;
         }
     }
