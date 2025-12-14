@@ -242,6 +242,7 @@ export interface Settings {
     pixKey: string;
     pixKeyRecipient?: string;
     whatsappMessageTemplate?: string;
+    announcementMessageTemplate?: string; // New field for the announcement
     pricing: {
         perKm: number;
         wellWaterFee: number;

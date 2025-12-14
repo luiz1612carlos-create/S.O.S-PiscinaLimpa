@@ -916,33 +916,59 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                  {/* Mensagens e Notificações */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Configuração de Mensagens</h3>
-                    <div>
-                        <div className="flex justify-between items-center mb-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Template de Cobrança WhatsApp
-                            </label>
-                            <Button size="sm" variant="secondary" onClick={handleResetTemplate}>
-                                <SparklesIcon className="w-4 h-4 mr-1 text-yellow-500" />
-                                Restaurar Modelo Padrão
-                            </Button>
+                    <div className="space-y-6">
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Template de Cobrança WhatsApp
+                                </label>
+                                <Button size="sm" variant="secondary" onClick={handleResetTemplate}>
+                                    <SparklesIcon className="w-4 h-4 mr-1 text-yellow-500" />
+                                    Restaurar Modelo Padrão
+                                </Button>
+                            </div>
+                            <textarea
+                                name="whatsappMessageTemplate"
+                                value={localSettings.whatsappMessageTemplate || ''}
+                                onChange={(e) => handleSimpleChange(e)}
+                                rows={5}
+                                className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-2"
+                                placeholder="Olá {CLIENTE}, ..."
+                            />
+                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                                <p>Variáveis disponíveis para substituição:</p>
+                                <ul className="list-disc list-inside mt-1">
+                                    <li><strong>{`{CLIENTE}`}</strong>: Nome do Cliente</li>
+                                    <li><strong>{`{VALOR}`}</strong>: Valor da mensalidade (ex: 150,00)</li>
+                                    <li><strong>{`{VENCIMENTO}`}</strong>: Data de vencimento (dd/mm/aaaa)</li>
+                                    <li><strong>{`{PIX}`}</strong>: Chave PIX (usa a do cliente, do banco do cliente ou a da empresa)</li>
+                                    <li><strong>{`{DESTINATARIO}`}</strong>: Nome do beneficiário da chave PIX</li>
+                                </ul>
+                            </div>
                         </div>
-                        <textarea
-                            name="whatsappMessageTemplate"
-                            value={localSettings.whatsappMessageTemplate || ''}
-                            onChange={(e) => handleSimpleChange(e)}
-                            rows={5}
-                            className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-2"
-                            placeholder="Olá {CLIENTE}, ..."
-                        />
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                            <p>Variáveis disponíveis para substituição:</p>
-                            <ul className="list-disc list-inside mt-1">
-                                <li><strong>{`{CLIENTE}`}</strong>: Nome do Cliente</li>
-                                <li><strong>{`{VALOR}`}</strong>: Valor da mensalidade (ex: 150,00)</li>
-                                <li><strong>{`{VENCIMENTO}`}</strong>: Data de vencimento (dd/mm/aaaa)</li>
-                                <li><strong>{`{PIX}`}</strong>: Chave PIX (usa a do cliente, do banco do cliente ou a da empresa)</li>
-                                <li><strong>{`{DESTINATARIO}`}</strong>: Nome do beneficiário da chave PIX</li>
-                            </ul>
+
+                         <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Template de Aviso/Anúncio WhatsApp
+                                </label>
+                            </div>
+                            <textarea
+                                name="announcementMessageTemplate"
+                                value={localSettings.announcementMessageTemplate || ''}
+                                onChange={(e) => handleSimpleChange(e)}
+                                rows={6}
+                                className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-2"
+                                placeholder="Atenção! ..."
+                            />
+                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                                <p>Variáveis disponíveis para substituição:</p>
+                                <ul className="list-disc list-inside mt-1">
+                                    <li><strong>{`{CLIENTE}`}</strong>: Nome do Cliente</li>
+                                    <li><strong>{`{LOGIN}`}</strong>: E-mail do cliente</li>
+                                    <li><strong>{`{SENHA}`}</strong>: (Substituído por texto fixo, pois não é possível recuperar senhas)</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>

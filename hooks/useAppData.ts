@@ -56,6 +56,7 @@ const defaultSettings: Settings = {
     pixKey: "seu-pix@email.com",
     pixKeyRecipient: "S.O.S Piscina Limpa",
     whatsappMessageTemplate: "Olá {CLIENTE}, tudo bem? Passando para lembrar sobre o vencimento da sua mensalidade no valor de R$ {VALOR} no dia {VENCIMENTO}. \n\nChave PIX: {PIX} \nDestinatário: {DESTINATARIO}\n\nAgradecemos a parceria!",
+    announcementMessageTemplate: "Atenção! ⚠️\n\nInformamos que nessas datas nossos serviços não estarão disponíveis.\n(Envie a imagem do calendário/aviso após abrir o WhatsApp)\n\nAcesse sua conta do cliente pelo site: https://s-o-s-piscina-limpa.vercel.app/\n\nVá na opção 'Agendar Evento' e faça sua programação. Isso nos ajudará a nos organizar e entregar a qualidade necessária.\n\nAcesse sua conta cliente:\nLogin: {LOGIN}\nSenha: (sua senha de acesso)",
     pricing: {
         perKm: 1.5,
         wellWaterFee: 50,

@@ -45,6 +45,11 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    
+    // Announcement state
+    const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+    const [selectedClientForAnnouncement, setSelectedClientForAnnouncement] = useState<Client | null>(null);
+    const [announcementMessage, setAnnouncementMessage] = useState('');
 
     const filteredClients = useMemo(() => {
         return clients.filter(client => {
@@ -142,6 +147,33 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         }
     };
     
+    const handleOpenAnnouncement = (e: React.MouseEvent, client: Client) => {
+        e.stopPropagation(); // Prevent opening the edit modal
+        if (!settings) return;
+        
+        setSelectedClientForAnnouncement(client);
+        
+        // Prepare template
+        let template = settings.announcementMessageTemplate || "Atenção {CLIENTE}!\n\nAcesse: https://s-o-s-piscina-limpa.vercel.app/\nLogin: {LOGIN}";
+        
+        const message = template
+            .replace(/{CLIENTE}/g, client.name)
+            .replace(/{LOGIN}/g, client.email)
+            .replace(/{SENHA}/g, "********"); // Passwords cannot be retrieved
+
+        setAnnouncementMessage(message);
+        setIsAnnouncementModalOpen(true);
+    };
+
+    const handleSendAnnouncement = () => {
+        if (!selectedClientForAnnouncement) return;
+        const phone = selectedClientForAnnouncement.phone.replace(/\D/g, '');
+        const encodedMessage = encodeURIComponent(announcementMessage);
+        window.open(`https://wa.me/55${phone}?text=${encodedMessage}`, '_blank');
+        setIsAnnouncementModalOpen(false);
+        setSelectedClientForAnnouncement(null);
+    };
+
     const isAdvancePlanActive = (client: Client): boolean => {
         if (!client.advancePaymentUntil) return false;
         const today = new Date();
@@ -174,7 +206,7 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredClients.map(client => (
-                        <Card key={client.id} className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300" onClick={() => handleOpenModal(client)}>
+                        <Card key={client.id} className="cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative group" onClick={() => handleOpenModal(client)}>
                             <CardHeader>
                                 <div className="flex justify-between items-start">
                                     <h3 className="text-lg font-semibold truncate pr-2">{client.name}</h3>
@@ -192,6 +224,17 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                                 <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{formatAddress(client.address)}</p>
                                 <p className="text-sm text-gray-600 dark:text-gray-400">{client.phone}</p>
                             </CardContent>
+                             <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button 
+                                    size="sm" 
+                                    variant="light"
+                                    className="shadow-md !p-2" 
+                                    onClick={(e) => handleOpenAnnouncement(e, client)} 
+                                    title="Enviar Aviso/Anúncio"
+                                >
+                                    <SparklesIcon className="w-5 h-5 text-purple-600" />
+                                </Button>
+                            </div>
                         </Card>
                     ))}
                 </div>
@@ -212,6 +255,37 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                     settings={settings}
                 />
             )}
+            
+            {/* Announcement Modal */}
+            <Modal
+                isOpen={isAnnouncementModalOpen}
+                onClose={() => setIsAnnouncementModalOpen(false)}
+                title={`Enviar Aviso para ${selectedClientForAnnouncement?.name}`}
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setIsAnnouncementModalOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleSendAnnouncement}>Enviar via WhatsApp</Button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 text-sm text-blue-700 dark:text-blue-300">
+                        <strong>Dica:</strong> Se precisar enviar uma imagem, anexe-a manualmente no WhatsApp após clicar em enviar. O link abrirá a conversa com o texto abaixo pré-preenchido.
+                    </div>
+                    <textarea
+                        value={announcementMessage}
+                        onChange={(e) => setAnnouncementMessage(e.target.value)}
+                        rows={10}
+                        className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                     <div className="flex items-center gap-2 text-sm text-gray-500">
+                         <span className="font-bold">Anexar Imagem:</span> 
+                         {/* Dummy file input to satisfy visual requirement, explicitly stating functionality limitation */}
+                         <input type="file" disabled className="text-xs file:py-1 file:px-2 cursor-not-allowed opacity-50" title="Anexe a imagem diretamente no WhatsApp." />
+                         <span className="text-xs">(Anexar no App do WhatsApp)</span>
+                     </div>
+                </div>
+            </Modal>
         </div>
     );
 };
