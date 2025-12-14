@@ -11,13 +11,15 @@ import { Select } from '../../components/Select';
 declare global {
     interface Window {
         GoogleGenAI: any;
-        process: {
-            env: {
-                API_KEY: string;
-            }
-        }
     }
 }
+
+// Declaração para process.env para compatibilidade
+declare var process: {
+    env: {
+        API_KEY: string;
+    }
+};
 
 interface RoutesViewProps {
     appContext: AppContextType;
@@ -193,7 +195,13 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                       throw new Error("A biblioteca de IA do Google ainda está carregando ou falhou. Tente recarregar a página.");
                     }
                     
-                    const apiKey = window.process?.env?.API_KEY;
+                    // Use process.env.API_KEY directly to support build-time injection.
+                    // Fallback to window.process if running in a non-build environment (like local preview).
+                    const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
+
+                    if (!apiKey) {
+                        throw new Error("API Key do Google Gemini não configurada.");
+                    }
 
                     // The Gemini SDK will throw an error if the key is missing or invalid.
                     // We catch it below to provide a user-friendly message.
@@ -221,6 +229,8 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                     console.error("Erro na análise da IA:", e);
                     if (e.message && (e.message.includes('API key not valid') || e.message.includes('API key not found'))) {
                         setAiAnalysis("Análise da IA indisponível. (API Key não configurada ou inválida).");
+                    } else if (e.message && e.message.includes('API Key do Google Gemini não configurada')) {
+                        setAiAnalysis("Chave da API não configurada. Verifique as configurações do ambiente.");
                     } else {
                         setAiAnalysis("Não foi possível gerar a análise da IA: " + e.message);
                     }
@@ -267,12 +277,12 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                 <CardContent>
                     {isAnalyzing ? <Spinner /> : 
                         <div className="text-sm space-y-2 whitespace-pre-wrap">
-                            {aiAnalysis.split('\n').map((line, i) => {
+                            {aiAnalysis ? aiAnalysis.split('\n').map((line, i) => {
                                 if (line.trim().startsWith('*') || line.trim().startsWith('-')) {
                                     return <p key={i} className="pl-4">{line}</p>;
                                 }
                                 return <p key={i}>{line}</p>;
-                            })}
+                            }) : <p className="text-gray-500 italic">Aguardando dados...</p>}
                         </div>
                     }
                 </CardContent>
