@@ -336,17 +336,29 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                 <Card data-tour-id="client-stock">
                     <CardHeader data-tour-id="client-stock-header"><h3 className="text-xl font-semibold">Meus Produtos</h3></CardHeader>
                     <CardContent className="space-y-3 max-h-[80vh] overflow-y-auto">
-                        {clientData.stock.length > 0 ? clientData.stock.map(item => (
-                            <div key={item.productId} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                <div>
-                                    <p className="font-semibold">{item.name}</p>
+                        {clientData.stock.length > 0 ? clientData.stock.map(item => {
+                            const max = item.maxQuantity || 5; // Default visual fallback
+                            const percentage = Math.min(100, (item.quantity / max) * 100);
+                            const lowStock = item.quantity <= (item.maxQuantity ? item.maxQuantity * 0.3 : (settings?.automation.replenishmentStockThreshold || 2));
+                            
+                            return (
+                                <div key={item.productId} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <p className="font-semibold">{item.name}</p>
+                                        <p className="text-sm font-bold text-gray-600 dark:text-gray-300">
+                                            {item.quantity} / {max}
+                                        </p>
+                                    </div>
+                                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
+                                        <div 
+                                            className={`h-2.5 rounded-full ${lowStock ? 'bg-red-500' : 'bg-green-500'}`} 
+                                            style={{ width: `${percentage}%` }}
+                                        ></div>
+                                    </div>
+                                    {lowStock && <p className="text-xs text-red-500 font-semibold mt-1">Estoque baixo</p>}
                                 </div>
-                                <div className="text-right">
-                                     <p className="font-bold text-lg">{item.quantity}</p>
-                                     {item.quantity <= (settings?.automation.replenishmentStockThreshold || 2) && <p className="text-xs text-red-500 font-semibold">Reposição recomendada</p>}
-                                </div>
-                            </div>
-                        )) : <p>Nenhum produto em seu estoque.</p>}
+                            );
+                        }) : <p>Nenhum produto em seu estoque.</p>}
                     </CardContent>
                 </Card>
             </div>

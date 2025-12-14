@@ -197,7 +197,15 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             for (const client of activeClients) {
                 if (pendingQuotesClientIds.has(client.id)) continue;
 
-                const lowStockItems = client.stock.filter(item => item.quantity <= threshold);
+                // Determine low stock items based on Global Threshold OR specific Max Quantity logic
+                const lowStockItems = client.stock.filter(item => {
+                    if (item.maxQuantity) {
+                         // If maxQuantity is defined, we consider it low if it's below 30% OR below the global threshold
+                         return item.quantity <= Math.max(threshold, item.maxQuantity * 0.3);
+                    }
+                    return item.quantity <= threshold;
+                });
+
                 if (lowStockItems.length === 0) continue;
                 
                 const itemsToReplenish: any[] = [];
@@ -206,9 +214,21 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 for (const lowItem of lowStockItems) {
                     const productInfo = products.find(p => p.id === lowItem.productId);
                     if (productInfo && productInfo.stock > 0) {
-                        const quantityToSuggest = 5;
-                        itemsToReplenish.push({ ...productInfo, quantity: quantityToSuggest });
-                        total += productInfo.price * quantityToSuggest;
+                        // Calculate suggested quantity
+                        let quantityToSuggest = 0;
+                        
+                        if (lowItem.maxQuantity && lowItem.maxQuantity > lowItem.quantity) {
+                            // If max quantity is set, fill up to max
+                            quantityToSuggest = lowItem.maxQuantity - lowItem.quantity;
+                        } else {
+                            // Fallback logic: suggest 5 units or enough to pass threshold
+                            quantityToSuggest = 5;
+                        }
+
+                        if (quantityToSuggest > 0) {
+                            itemsToReplenish.push({ ...productInfo, quantity: quantityToSuggest });
+                            total += productInfo.price * quantityToSuggest;
+                        }
                     }
                 }
 

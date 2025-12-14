@@ -39,6 +39,7 @@ export interface ClientProduct {
     productId: string;
     name: string;
     quantity: number;
+    maxQuantity?: number; // Added for stock management
 }
 
 export interface Bank {

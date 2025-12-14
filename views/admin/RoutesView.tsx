@@ -14,13 +14,6 @@ declare global {
     }
 }
 
-// Declaração para process.env para compatibilidade
-declare var process: {
-    env: {
-        API_KEY: string;
-    }
-};
-
 interface RoutesViewProps {
     appContext: AppContextType;
 }
@@ -195,12 +188,33 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                       throw new Error("A biblioteca de IA do Google ainda está carregando ou falhou. Tente recarregar a página.");
                     }
                     
-                    // Use process.env.API_KEY directly to support build-time injection.
-                    // Fallback to window.process if running in a non-build environment (like local preview).
-                    const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
+                    // Recuperação da API Key
+                    // O ambiente de desenvolvimento injeta isso automaticamente.
+                    // Em PRODUÇÃO (Hospedado), isso deve vir das Environment Variables do servidor/hosting.
+                    
+                    // Safe access to process.env to avoid "process is not defined" error in browser
+                    let envApiKey = '';
+                    try {
+                        if (typeof process !== 'undefined' && process.env) {
+                            envApiKey = process.env.API_KEY || '';
+                        }
+                    } catch (e) {
+                        // Ignore reference error if process is undefined
+                    }
 
-                    if (!apiKey) {
-                        throw new Error("API Key do Google Gemini não configurada.");
+                    const apiKey = envApiKey || (window as any).process?.env?.API_KEY;
+
+                    // Verificação explícita para guiar o usuário em produção
+                    if (!apiKey || apiKey.trim() === '') {
+                        setAiAnalysis("⚠️ A API Key do Gemini não foi encontrada neste ambiente.\n\n" +
+                            "Por que funciona na edição? O editor fornece a chave automaticamente.\n" +
+                            "No app hospedado, você deve configurar manualmente.\n\n" +
+                            "Como resolver:\n" +
+                            "1. Acesse o painel da sua hospedagem (Vercel, Netlify, Firebase Hosting, etc).\n" +
+                            "2. Procure por 'Environment Variables' (Variáveis de Ambiente).\n" +
+                            "3. Adicione uma variável com Nome: 'API_KEY' e Valor: 'Sua Chave do Google AI Studio'.\n" +
+                            "(Obs: O Firebase pago não configura isso automaticamente).");
+                        return;
                     }
 
                     // The Gemini SDK will throw an error if the key is missing or invalid.
@@ -228,7 +242,7 @@ const WeatherForecast: React.FC<{ settings: Settings | null }> = ({ settings }) 
                 } catch (e: any) {
                     console.error("Erro na análise da IA:", e);
                     if (e.message && (e.message.includes('API key not valid') || e.message.includes('API key not found'))) {
-                        setAiAnalysis("Análise da IA indisponível. (API Key não configurada ou inválida).");
+                        setAiAnalysis("Análise da IA indisponível. (API Key inválida ou não encontrada). Verifique suas Variáveis de Ambiente.");
                     } else if (e.message && e.message.includes('API Key do Google Gemini não configurada')) {
                         setAiAnalysis("Chave da API não configurada. Verifique as configurações do ambiente.");
                     } else {
