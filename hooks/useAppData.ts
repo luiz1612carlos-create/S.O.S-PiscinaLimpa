@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
@@ -1113,6 +1114,16 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
+    const acknowledgeTerms = async (clientId: string) => {
+        // Encontrar o documento correto pelo campo uid, pois clients é uma array e não sabemos o doc ID diretamente sem iterar
+        // Mas a função pode receber o doc ID se preferir. Vamos usar o clientId como o ID do documento.
+        // Se clientId for o UID (auth), precisamos buscar. Se for o doc ID, é direto.
+        // O `clientData.id` no ClientDashboardView é o ID do documento.
+        await db.collection('clients').doc(clientId).update({
+            lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    };
+
 
     return {
         clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, planChangeRequests, loading,
@@ -1132,6 +1143,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         requestPlanChange,
         respondToPlanChangeRequest,
         acceptPlanChange,
-        cancelPlanChangeRequest
+        cancelPlanChangeRequest,
+        acknowledgeTerms
     };
 };

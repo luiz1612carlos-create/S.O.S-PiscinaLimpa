@@ -122,6 +122,7 @@ export interface Client {
     customPricing?: PricingSettings; // Allows locking pricing for specific clients (e.g. VIPs)
     distanceFromHq?: number; // Distance from headquarters in KM
     scheduledPlanChange?: ScheduledPlanChange; // New field for plan upgrades waiting for next cycle
+    lastAcceptedTermsAt?: any; // Firestore Timestamp - Quando o cliente aceitou os termos pela última vez
 }
 
 export interface BudgetQuote {
@@ -265,6 +266,7 @@ export interface Settings {
     pixKeyRecipient?: string;
     whatsappMessageTemplate?: string;
     announcementMessageTemplate?: string; // New field for the announcement
+    termsUpdatedAt?: any; // Firestore Timestamp - Quando os termos foram alterados pela última vez
     pricing: {
         perKm: number;
         wellWaterFee: number;
@@ -315,7 +317,6 @@ export type PricingSettings = Settings['pricing'];
 export interface AffectedClientPreview {
     id: string;
     name: string;
-    
 }
 
 export interface PendingPriceChange {
@@ -420,4 +421,5 @@ export interface AppData {
     respondToPlanChangeRequest: (requestId: string, proposedPrice: number, notes: string) => Promise<void>;
     acceptPlanChange: (requestId: string, price: number, fidelityPlan?: FidelityPlan) => Promise<void>;
     cancelPlanChangeRequest: (requestId: string) => Promise<void>;
+    acknowledgeTerms: (clientId: string) => Promise<void>;
 }

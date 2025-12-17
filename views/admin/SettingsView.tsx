@@ -9,6 +9,7 @@ import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, ChartBarIcon, Currency
 import { Modal } from '../../components/Modal';
 import { Select } from '../../components/Select';
 import { calculateClientMonthlyFee } from '../../utils/calculations';
+import { firebase } from '../../firebase'; // Import firebase for timestamp
 
 // This is a workaround for the no-build-tool environment
 declare const html2canvas: any;
@@ -670,8 +671,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         setUploadProgress(logoFile ? 0 : null);
         try {
             const hasPriceChanged = JSON.stringify(localSettings.pricing) !== JSON.stringify(settings.pricing);
+            
+            // Check if plan terms changed to update version timestamp
+            const hasPlansChanged = JSON.stringify(localSettings.plans) !== JSON.stringify(settings.plans);
 
             const { pricing, ...otherSettings } = localSettings;
+            
+            if (hasPlansChanged) {
+                otherSettings.termsUpdatedAt = firebase.firestore.FieldValue.serverTimestamp();
+            }
 
             await updateSettings(
                 otherSettings, 
