@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
@@ -79,6 +78,7 @@ const defaultSettings: Settings = {
     ],
     features: {
         vipPlanEnabled: true,
+        planUpgradeEnabled: true, // Default to true
         vipPlanDisabledMessage: "Em breve!",
         vipUpgradeTitle: "Descubra o Plano VIP",
         vipUpgradeDescription: "Tenha produtos inclusos, atendimento prioritário e descontos exclusivos.",
@@ -329,12 +329,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setBudgetQuotes(data);
             setLoadingState('budgetQuotes', false);
         });
-        const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
-            if (doc.exists) {
-                setRoutes(doc.data() as Routes);
-            }
-            setLoadingState('routes', false);
-        });
         const unsubOrders = db.collection('orders').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
             setOrders(data);
@@ -345,35 +339,15 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setReplenishmentQuotes(data);
             setLoadingState('replenishmentQuotes', false);
         });
-        const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
-            setBanks(data);
-            setLoadingState('banks', false);
-        });
         const unsubTransactions = db.collection('transactions').orderBy('date', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
             setTransactions(data);
             setLoadingState('transactions', false);
         });
-        const unsubAdvanceRequests = db.collection('advancePaymentRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest));
-            setAdvancePaymentRequests(data);
-            setLoadingState('advancePaymentRequests', false);
-        });
         const unsubStockProducts = db.collection('stockProducts').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockProduct));
             setStockProducts(data);
             setLoadingState('stockProducts', false);
-        });
-         const unsubPendingChanges = db.collection('pendingPriceChanges').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
-            setPendingPriceChanges(data);
-            setLoadingState('pendingPriceChanges', false);
-        });
-        const unsubEvents = db.collection('poolEvents').orderBy('eventDate', 'asc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
-            setPoolEvents(data);
-            setLoadingState('poolEvents', false);
         });
         const unsubPlanChanges = db.collection('planChangeRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest));
@@ -382,10 +356,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
 
 
-        return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); unsubEvents(); unsubPlanChanges(); };
+        return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubOrders(); unsubQuotes(); unsubTransactions(); unsubStockProducts(); unsubPlanChanges(); };
     }, [isUserAdmin, isUserTechnician]);
     
-    // Products and Settings listeners (publicly available)
+    // Publicly available listeners (Settings, Products, Routes, Banks)
+    // Moved unsubRoutes here so clients can also see updates to their visit days
     useEffect(() => {
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
@@ -403,22 +378,26 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
              setLoadingState('settings', false);
         });
         
-        // Listen for banks publicly for the client dashboard to resolve pix keys
+        const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
+            if (doc.exists) {
+                setRoutes(doc.data() as Routes);
+            }
+            setLoadingState('routes', false);
+        });
+
         const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
             setBanks(data);
             setLoadingState('banks', false);
         });
 
-        return () => { unsubProducts(); unsubSettings(); unsubBanks(); };
-    }, []); // Removed setupCheck dependency to load settings always
+        return () => { unsubProducts(); unsubSettings(); unsubRoutes(); unsubBanks(); };
+    }, []);
 
      // Client-specific data fetching
     useEffect(() => {
         if (userData?.role !== 'client' || !user) return;
         
-        // Automatically fetch and listen to the client document if user is a client.
-        // This ensures App.tsx has access to the client data (like maintenance permission) immediately.
         const unsubClient = db.collection('clients').where('uid', '==', user.uid).limit(1).onSnapshot(snapshot => {
             if (!snapshot.empty) {
                 const doc = snapshot.docs[0];
@@ -471,7 +450,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setLoadingState('poolEvents', false);
         });
         
-        // Also fetch pending price changes for clients so they can be notified
         const unsubPendingChanges = db.collection('pendingPriceChanges')
             .where('status', '==', 'pending')
             .onSnapshot(snapshot => {
@@ -501,7 +479,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             throw new Error("Um administrador já existe. A criação foi cancelada.");
         }
         try {
-            // Restore Firebase Auth usage
             const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
             const newUid = userCredential.user.uid;
             
@@ -519,9 +496,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     };
 
     const createTechnician = async (name: string, email: string, pass: string) => {
-        // WARNING: This client-side method will sign out the current admin user.
-        // A backend function (Firebase Function) is the recommended way to handle user creation by an admin.
-        // Given the project constraints, we proceed with this method and the admin will need to log in again.
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
             const newUid = userCredential.user.uid;
@@ -533,12 +507,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 uid: newUid,
             });
 
-            // At this point, the admin is logged out. We sign out the newly created tech
-            // to ensure they are not left logged in, forcing a clean login flow for everyone.
             await auth.signOut();
         } catch (error: any) {
-            // If user creation fails, the admin should still be logged in.
-            // We can check for specific errors, like 'auth/email-already-in-use'.
             console.error("Error creating technician:", error);
             if (error.code === 'auth/email-already-in-use') {
                 throw new Error("Este e-mail já está em uso por outra conta.");
@@ -554,14 +524,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         const budget = budgetDoc.data() as BudgetQuote;
 
-        // Proactively check if the email is already in use
         try {
             const signInMethods = await auth.fetchSignInMethodsForEmail(budget.email);
             if (signInMethods.length > 0) {
                 throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
             }
         } catch (error: any) {
-            // Re-throw our custom error or a generic one
             if (error.message.startsWith("Já existe uma conta")) {
                 throw error;
             }
@@ -569,7 +537,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             throw new Error("Falha ao verificar o e-mail do usuário. Tente novamente.");
         }
 
-        // If the email is not in use, proceed with creating the new user and client
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(budget.email, password);
             const newUid = userCredential.user.uid;
@@ -594,7 +561,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 poolDimensions: budget.poolDimensions,
                 poolVolume: budget.poolVolume,
                 hasWellWater: budget.hasWellWater,
-                includeProducts: false, // Always false from budget
+                includeProducts: false,
                 isPartyPool: budget.isPartyPool,
                 plan: budget.plan,
                 clientStatus: 'Ativo',
@@ -610,7 +577,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 distanceFromHq: distanceFromHq || budget.distanceFromHq || 0,
             };
             
-            // FIX: Conditionally add fidelityPlan to avoid saving 'undefined' to Firestore.
             if (budget.fidelityPlan) {
                 newClient.fidelityPlan = budget.fidelityPlan;
             }
@@ -624,11 +590,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         } catch (error: any) {
             console.error("Erro ao aprovar orçamento de novo cliente:", error);
-            // Add a fallback check for the specific error code from Firebase
             if (error.code === 'auth/email-already-in-use') {
                 throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
             }
-            // The original Firebase error is often more specific (e.g., weak password)
             throw error;
         }
     };
@@ -669,25 +633,19 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             'payment.status': 'Pago'
         };
 
-        // This is a regular payment, so if there was an advance plan, it's now over.
-        // We clear the field to correctly reflect the client's status.
         if (client.advancePaymentUntil) {
             clientUpdate.advancePaymentUntil = firebase.firestore.FieldValue.delete();
         }
 
-        // Check for SCHEDULED PLAN CHANGE
-        // If present, apply the new plan now so the next cycle uses the new terms.
         if (client.scheduledPlanChange) {
             clientUpdate.plan = client.scheduledPlanChange.newPlan;
             
-            // Apply new fidelity plan if set
             if (client.scheduledPlanChange.fidelityPlan) {
                 clientUpdate.fidelityPlan = client.scheduledPlanChange.fidelityPlan;
             } else {
                 clientUpdate.fidelityPlan = firebase.firestore.FieldValue.delete();
             }
             
-            // Remove the schedule
             clientUpdate.scheduledPlanChange = firebase.firestore.FieldValue.delete();
         }
 
@@ -701,8 +659,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const scheduleClient = async (clientId: string, dayKey: string) => {
         const client = clients.find(c => c.id === clientId);
         if (!client) return;
+        
+        // Use set with merge to ensure day and isRouteActive exist
         await db.collection('routes').doc('main').set({
             [dayKey]: {
+                day: dayKey,
+                isRouteActive: false,
                 clients: firebase.firestore.FieldValue.arrayUnion(client)
             }
         }, { merge: true });
@@ -729,10 +691,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         let docRef;
     
         if ('id' in product) {
-            // Existing product
             docRef = db.collection('products').doc(product.id);
         } else {
-            // New product
             docRef = db.collection('products').doc();
         }
     
@@ -744,11 +704,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         }
         
         if ('id' in product) {
-            // Update existing
             const { id, ...dataToUpdate } = productData as Product;
             return docRef.update(dataToUpdate);
         } else {
-            // Set new with specific ID
             return docRef.set(productData);
         }
     };
@@ -1007,7 +965,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
             await db.collection('routes').doc('main').set({});
             
-            // Note: Cannot call showNotification directly here, caller should handle it.
             return Promise.resolve();
         } catch (error) {
             console.error("Erro ao resetar os dados:", error);
@@ -1037,12 +994,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         const currentSettings = settingsDoc.data() as Settings;
         const currentRecesses = currentSettings.recessPeriods || [];
 
-        if ('id' in recess) { // Update existing
+        if ('id' in recess) {
             const index = currentRecesses.findIndex(r => r.id === recess.id);
             if (index > -1) {
                 currentRecesses[index] = recess;
             }
-        } else { // Add new
+        } else {
             const newRecess = { ...recess, id: db.collection('settings').doc().id };
             currentRecesses.push(newRecess);
         }

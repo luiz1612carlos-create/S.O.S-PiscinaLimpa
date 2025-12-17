@@ -206,7 +206,7 @@ export interface ReplenishmentQuote {
     items: CartItem[];
     total: number;
     status: ReplenishmentQuoteStatus;
-    createdAt: any;
+    createdAt: any; // Firestore Timestamp
     updatedAt: any;
 }
 
@@ -291,6 +291,8 @@ export interface Settings {
     fidelityPlans: FidelityPlan[];
     features: {
         vipPlanEnabled: boolean;
+        // FIX: Added missing planUpgradeEnabled property to fix error in useAppData.ts
+        planUpgradeEnabled: boolean; // New field to control upgrade visibility
         vipPlanDisabledMessage: string;
         vipUpgradeTitle?: string;
         vipUpgradeDescription?: string;

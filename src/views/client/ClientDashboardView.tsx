@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent, RecessPeriod, PendingPriceChange, PlanChangeRequest, FidelityPlan } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -45,12 +44,33 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     
     const nextVisit = useMemo(() => {
         if (!clientData || !routes) return null;
-        for (const dayKey of Object.keys(routes)) {
-            const day = routes[dayKey];
-            if (day.clients.some(c => c.id === clientData.id)) {
-                return { day: day.day, isRouteActive: day.isRouteActive };
+        
+        // Portuguese day names as used in the routes state/database
+        const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        const todayIndex = new Date().getDay();
+
+        // Create a sequence starting from today for the next 7 days
+        const searchSequence = [];
+        for (let i = 0; i < 7; i++) {
+            searchSequence.push({
+                index: (todayIndex + i) % 7,
+                offset: i
+            });
+        }
+        
+        for (const item of searchSequence) {
+            const dayName = dayNames[item.index];
+            const routeDay = routes[dayName];
+            
+            // Check if client (by uid or id) exists in this day's route list
+            if (routeDay && routeDay.clients && routeDay.clients.some(c => c.uid === clientData.uid || c.id === clientData.id)) {
+                return { 
+                    day: item.offset === 0 ? 'Hoje' : dayName, 
+                    isRouteActive: routeDay.isRouteActive 
+                };
             }
         }
+        
         return null;
     }, [clientData, routes]);
 
@@ -428,9 +448,16 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                                     <WeatherSunnyIcon className="w-16 h-16 mx-auto text-yellow-400 mb-2"/>
                                     <p className="text-3xl font-bold">{nextVisit.day}</p>
                                     <p className="text-gray-500">Previsão: Ensolarado, 28°C</p>
-                                    {nextVisit.isRouteActive && <p className="mt-2 text-green-500 font-bold animate-pulse">Equipe em rota!</p>}
+                                    {nextVisit.isRouteActive && (
+                                        <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                                            <p className="text-green-600 dark:text-green-400 font-bold text-sm animate-pulse flex items-center justify-center">
+                                                <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                                                Equipe em rota!
+                                            </p>
+                                        </div>
+                                    )}
                                 </>
-                            ) : <p>Nenhuma visita agendada.</p>}
+                            ) : <p className="text-gray-500 py-4 italic">Nenhuma visita agendada para esta semana.</p>}
                         </CardContent>
                     </Card>
                      <Card data-tour-id="payment">
@@ -714,19 +741,33 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
     const [date, setDate] = useState('');
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const clientEvents = useMemo(() => {
+        // Filter and sort events for this client - CRITICAL FIX: Use client.uid for consistency with AppData listener
+        return poolEvents.filter((e: any) => e.clientId === client.uid)
+            .sort((a: any, b: any) => (toDate(b.eventDate)?.getTime() || 0) - (toDate(a.eventDate)?.getTime() || 0));
+    }, [poolEvents, client.uid]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         try {
-            await createPoolEvent({ clientId: client.id, clientName: client.name, eventDate: new Date(date + 'T12:00:00'), notes });
+            await createPoolEvent({ 
+                clientId: client.uid, // Use UID to match AppData query
+                clientName: client.name, 
+                eventDate: new Date(date + 'T12:00:00'), 
+                notes 
+            });
             showNotification("Evento agendado!", "success");
-            setDate(''); setNotes('');
+            setDate(''); 
+            setNotes('');
         } catch (e: any) {
             showNotification(e.message, "error");
         } finally {
             setLoading(false);
         }
     };
+
     return (
         <Card>
             <CardHeader><h3 className="font-bold flex items-center"><CalendarDaysIcon className="w-5 h-5 mr-2"/> Agendar Uso da Piscina</h3></CardHeader>
@@ -734,8 +775,51 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
                 <form onSubmit={handleSubmit} className="space-y-2">
                     <Input label="Data do Evento" type="date" value={date} onChange={e => setDate(e.target.value)} required />
                     <Input label="Observações" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex: Churrasco, preciso da piscina limpa de manhã" />
-                    <Button type="submit" isLoading={loading}>Agendar</Button>
+                    <Button type="submit" isLoading={loading} className="w-full">Agendar</Button>
                 </form>
+
+                {clientEvents.length > 0 && (
+                    <div className="mt-6 pt-4 border-t dark:border-gray-700">
+                        <h4 className="font-semibold text-sm mb-3 text-gray-700 dark:text-gray-300">Meus Agendamentos:</h4>
+                        <div className="space-y-3">
+                            {clientEvents.map((event: any) => {
+                                const isConfirmed = event.status === 'acknowledged';
+                                return (
+                                    <div 
+                                        key={event.id} 
+                                        className={`p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm border-l-4 shadow-sm transition-all ${isConfirmed ? 'border-green-500' : 'border-yellow-400'}`}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold text-gray-800 dark:text-gray-100">
+                                                    {toDate(event.eventDate)?.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                </p>
+                                                {isConfirmed && <CheckBadgeIcon className="w-4 h-4 text-green-500" />}
+                                            </div>
+                                            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isConfirmed ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                                                {isConfirmed ? 'Confirmado' : 'Pendente'}
+                                            </div>
+                                        </div>
+                                        {event.notes && <p className="text-xs text-gray-600 dark:text-gray-400 italic mt-1 border-t dark:border-gray-700 pt-1">"{event.notes}"</p>}
+                                        
+                                        {isConfirmed ? (
+                                            <div className="mt-2 flex items-center gap-1.5 p-1.5 bg-green-50 dark:bg-green-900/10 rounded border border-green-100 dark:border-green-900/30">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                                <p className="text-[11px] text-green-700 dark:text-green-400 font-semibold uppercase">
+                                                    Recebimento confirmado pela administração
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-2 flex items-center">
+                                                <span className="mr-1">●</span> Aguardando visualização da administração
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

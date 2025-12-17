@@ -1,5 +1,3 @@
-
-// ... imports remain the same
 import React, { useState, useEffect, useMemo } from 'react';
 import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent, RecessPeriod, PendingPriceChange, PlanChangeRequest, FidelityPlan } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -25,7 +23,7 @@ const toDate = (timestamp: any): Date | null => {
 
 const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, appContext }) => {
     const { user, changePassword, showNotification } = authContext;
-    const { clients, loading, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent, pendingPriceChanges, planChangeRequests, requestPlanChange, acceptPlanChange, cancelPlanChangeRequest, acknowledgeTerms } = appContext;
+    const { clients, loading, settings, routes, replenishmentQuotes, updateReplenishmentQuoteStatus, createOrder, createAdvancePaymentRequest, isAdvancePlanGloballyAvailable, advancePaymentRequests, banks, poolEvents, createPoolEvent, pendingPriceChanges, planChangeRequests, requestPlanChange, acceptPlanChange, cancelPlanChangeRequest } = appContext;
     
     // Use client data from context instead of local fetch to prevent race conditions/loops
     const clientData = useMemo(() => {
@@ -41,15 +39,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     // Plan Upgrade State
     const [isPlanUpgradeModalOpen, setIsPlanUpgradeModalOpen] = useState(false);
     const [isRequestingPlanChange, setIsRequestingPlanChange] = useState(false);
-    const [selectedUpgradeOptionId, setSelectedUpgradeOptionId] = useState<string>('');
-    
-    // New Terms Acceptance State
-    const [isNewTermsModalOpen, setIsNewTermsModalOpen] = useState(false);
-    const [isAcceptingTerms, setIsAcceptingTerms] = useState(false);
-
-    // Upgrade Terms State
-    const [isUpgradeTermsModalOpen, setIsUpgradeTermsModalOpen] = useState(false);
-    const [hasAgreedToUpgradeTerms, setHasAgreedToUpgradeTerms] = useState(false);
+    const [selectedUpgradeOptionId, setSelectedUpgradeOptionId] = useState<string>('monthly');
 
     
     const nextVisit = useMemo(() => {
@@ -128,20 +118,21 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         
         const basePrice = activePlanChangeRequest.proposedPrice;
         
-        // Definindo opções de upgrade (Removido plano mensal sem fidelidade conforme solicitado)
-        const options: {
-            id: string;
-            title: string;
-            price: number;
-            discountPercent: number;
-            fidelityPlan?: FidelityPlan;
-        }[] = [];
+        const options = [
+            {
+                id: 'monthly',
+                title: 'Mensal (Sem Fidelidade)',
+                price: basePrice,
+                discountPercent: 0,
+                fidelityPlan: undefined as FidelityPlan | undefined
+            }
+        ];
         
         settings.fidelityPlans.forEach(plan => {
             const discount = basePrice * (plan.discountPercent / 100);
             options.push({
                 id: plan.id,
-                title: `VIP + Fidelidade ${plan.months} Meses`,
+                title: `Fidelidade ${plan.months} Meses`,
                 price: basePrice - discount,
                 discountPercent: plan.discountPercent,
                 fidelityPlan: plan
@@ -150,35 +141,6 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         
         return options;
     }, [activePlanChangeRequest, settings]);
-
-    // Auto-select the first valid option if current selection is invalid
-    useEffect(() => {
-        if (upgradeOptions.length > 0) {
-            const isValid = upgradeOptions.some(opt => opt.id === selectedUpgradeOptionId);
-            if (!isValid) {
-                setSelectedUpgradeOptionId(upgradeOptions[0].id);
-            }
-        }
-    }, [upgradeOptions, selectedUpgradeOptionId]);
-
-    // Check for Terms Updates
-    useEffect(() => {
-        if (!clientData || !settings) return;
-
-        const termsUpdated = toDate(settings.termsUpdatedAt);
-        const lastAccepted = toDate(clientData.lastAcceptedTermsAt);
-
-        // If terms have been updated in settings...
-        if (termsUpdated) {
-             // ...and client hasn't accepted OR accepted before the update
-             if (!lastAccepted || lastAccepted.getTime() < termsUpdated.getTime()) {
-                 setIsNewTermsModalOpen(true);
-             }
-        } else if (!lastAccepted) {
-             // Optional: Force acceptance on first login if no timestamp exists
-             setIsNewTermsModalOpen(true);
-        }
-    }, [clientData, settings]);
 
 
     const handlePasswordChange = async (e: React.FormEvent) => {
@@ -273,18 +235,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         }
     };
     
-    const handleOpenUpgradeTerms = () => {
-        const selectedOption = upgradeOptions.find(opt => opt.id === selectedUpgradeOptionId);
-        if (!selectedOption) {
-            showNotification('Selecione uma opção válida.', 'error');
-            return;
-        }
-        setIsPlanUpgradeModalOpen(false);
-        setIsUpgradeTermsModalOpen(true);
-        setHasAgreedToUpgradeTerms(false);
-    };
-
-    const handleFinalizeUpgrade = async () => {
+    const handleAcceptPlanChange = async () => {
         if (!activePlanChangeRequest || !activePlanChangeRequest.proposedPrice) return;
         
         const selectedOption = upgradeOptions.find(opt => opt.id === selectedUpgradeOptionId);
@@ -294,7 +245,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         try {
             await acceptPlanChange(activePlanChangeRequest.id, selectedOption.price, selectedOption.fidelityPlan);
             showNotification('Upgrade aceito! A mudança será aplicada no próximo ciclo.', 'success');
-            setIsUpgradeTermsModalOpen(false);
+            setIsPlanUpgradeModalOpen(false);
         } catch (error: any) {
             showNotification(error.message || 'Erro ao aceitar mudança.', 'error');
         } finally {
@@ -313,20 +264,6 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
             showNotification(error.message || 'Erro ao cancelar.', 'error');
         } finally {
             setIsRequestingPlanChange(false);
-        }
-    };
-
-    const handleAcknowledgeTerms = async () => {
-        if (!clientData) return;
-        setIsAcceptingTerms(true);
-        try {
-            await acknowledgeTerms(clientData.id); // Uses doc ID
-            setIsNewTermsModalOpen(false);
-            showNotification('Termos aceitos com sucesso.', 'success');
-        } catch (error: any) {
-            showNotification(error.message || 'Erro ao aceitar termos.', 'error');
-        } finally {
-            setIsAcceptingTerms(false);
         }
     };
 
@@ -354,7 +291,6 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* ... (previous JSX code for columns remains unchanged) ... */}
             <div className="lg:col-span-2 space-y-6">
                 
                 {/* Scheduled Change Notification */}
@@ -402,8 +338,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     </div>
                 )}
                 
-                {/* Plan Upgrade / Comparison Card - Only if Simple and VIP enabled and Upgrade Enabled */}
-                {clientData.plan === 'Simples' && settings.features.vipPlanEnabled && settings.features.planUpgradeEnabled && !clientData.scheduledPlanChange && (
+                {/* Plan Upgrade / Comparison Card - Only if Simple and VIP enabled */}
+                {clientData.plan === 'Simples' && settings.features.vipPlanEnabled && !clientData.scheduledPlanChange && (
                     <Card className="border-2 border-yellow-400 bg-yellow-50 dark:bg-yellow-900/10">
                         <CardContent className="flex flex-col md:flex-row items-center justify-between gap-4">
                             <div className="flex-1">
@@ -634,8 +570,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     footer={
                         <>
                             <Button variant="danger" onClick={handleRejectPlanChange} isLoading={isRequestingPlanChange}>Recusar</Button>
-                            {/* Changed to open terms modal instead of immediate finalize */}
-                            <Button onClick={handleOpenUpgradeTerms} isLoading={isRequestingPlanChange} disabled={upgradeOptions.length === 0}>Aceitar Upgrade</Button>
+                            <Button onClick={handleAcceptPlanChange} isLoading={isRequestingPlanChange}>Aceitar Upgrade</Button>
                         </>
                     }
                 >
@@ -646,36 +581,28 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                         </p>
                         
                         <div className="space-y-3 mt-4">
-                            {upgradeOptions.length > 0 ? (
-                                <>
-                                    <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Escolha seu plano de pagamento:</p>
-                                    {upgradeOptions.map(option => (
-                                        <div 
-                                            key={option.id}
-                                            onClick={() => setSelectedUpgradeOptionId(option.id)}
-                                            className={`p-4 border-2 rounded-lg cursor-pointer transition-all flex justify-between items-center ${selectedUpgradeOptionId === option.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'}`}
-                                        >
-                                            <div>
-                                                <p className="font-bold">{option.title}</p>
-                                                {option.discountPercent > 0 && (
-                                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full dark:bg-green-900 dark:text-green-200">
-                                                        {option.discountPercent}% OFF
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-xl font-bold text-primary-600 dark:text-primary-400">
-                                                    R$ {option.price.toFixed(2)}<span className="text-sm text-gray-500 font-normal">/mês</span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </>
-                            ) : (
-                                <div className="p-4 bg-yellow-100 text-yellow-800 rounded-md">
-                                    Não há planos de fidelidade configurados no momento. Entre em contato com o suporte.
+                            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">Escolha seu plano de pagamento:</p>
+                            {upgradeOptions.map(option => (
+                                <div 
+                                    key={option.id}
+                                    onClick={() => setSelectedUpgradeOptionId(option.id)}
+                                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all flex justify-between items-center ${selectedUpgradeOptionId === option.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'}`}
+                                >
+                                    <div>
+                                        <p className="font-bold">{option.title}</p>
+                                        {option.discountPercent > 0 && (
+                                            <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full dark:bg-green-900 dark:text-green-200">
+                                                {option.discountPercent}% OFF
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xl font-bold text-primary-600 dark:text-primary-400">
+                                            R$ {option.price.toFixed(2)}<span className="text-sm text-gray-500 font-normal">/mês</span>
+                                        </p>
+                                    </div>
                                 </div>
-                            )}
+                            ))}
                         </div>
 
                         {activePlanChangeRequest.adminNotes && (
@@ -688,47 +615,6 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                         <p className="text-xs text-gray-500 text-center mt-4">
                             Ao aceitar, a mudança de plano será agendada e entrará em vigor automaticamente após o pagamento da sua próxima fatura atual.
                         </p>
-                    </div>
-                </Modal>
-            )}
-
-            {isUpgradeTermsModalOpen && settings && (
-                <Modal
-                    isOpen={isUpgradeTermsModalOpen}
-                    onClose={() => setIsUpgradeTermsModalOpen(false)}
-                    title={`Contrato de Serviço - ${settings.plans.vip.title}`}
-                    size="lg"
-                    footer={
-                        <div className="flex justify-between w-full items-center">
-                             <Button variant="secondary" onClick={() => setIsUpgradeTermsModalOpen(false)}>Cancelar</Button>
-                             <Button
-                                onClick={handleFinalizeUpgrade}
-                                isLoading={isRequestingPlanChange}
-                                disabled={!hasAgreedToUpgradeTerms || isRequestingPlanChange}
-                            >
-                                Confirmar e Finalizar Upgrade
-                            </Button>
-                        </div>
-                    }
-                >
-                    <div className="space-y-4">
-                        <div className="p-3 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-md">
-                            <p className="font-bold">Atenção!</p>
-                            <p>Ao concordar com os termos abaixo, seu plano será alterado para o <strong>{settings.plans.vip.title}</strong> com vigência após o pagamento da próxima fatura.</p>
-                        </div>
-                        <h4 className="font-bold text-lg">{settings.plans.vip.title}</h4>
-                        <div className="prose dark:prose-invert max-h-64 overflow-y-auto p-2 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
-                            <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{settings.plans.vip.terms}</p>
-                        </div>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={hasAgreedToUpgradeTerms}
-                                onChange={(e) => setHasAgreedToUpgradeTerms(e.target.checked)}
-                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                            />
-                            Li e concordo com os termos e condições do Plano VIP.
-                        </label>
                     </div>
                 </Modal>
             )}
@@ -748,40 +634,10 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     </div>
                 </Modal>
             )}
-
-            {/* New Terms Acceptance Modal */}
-            {isNewTermsModalOpen && currentPlanDetails && (
-                <Modal
-                    isOpen={isNewTermsModalOpen}
-                    // Prevent closing by clicking outside or escape, force acceptance
-                    onClose={() => {}}
-                    title="Atualização dos Termos de Serviço"
-                    size="lg"
-                    footer={
-                        <Button onClick={handleAcknowledgeTerms} isLoading={isAcceptingTerms} className="w-full">
-                            Li e Aceito os Novos Termos
-                        </Button>
-                    }
-                >
-                    <div className="space-y-4">
-                        <div className="p-3 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-md">
-                            <p className="font-bold">Atenção!</p>
-                            <p>Os termos de serviço foram atualizados. Para continuar utilizando o sistema, por favor, leia e aceite as novas condições abaixo.</p>
-                        </div>
-                        <h4 className="font-bold text-lg">{currentPlanDetails.title}</h4>
-                        <div className="prose dark:prose-invert max-h-80 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border dark:border-gray-700">
-                            <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                                {currentPlanDetails.terms || "Termos não disponíveis."}
-                            </p>
-                        </div>
-                    </div>
-                </Modal>
-            )}
         </div>
     );
 };
 
-// ... mock components (PriceChangeNotificationCard, RecessNotificationCard, ReplenishmentCard, RequestStatusCard, EventSchedulerCard, AdvancePaymentModal) remain unchanged ...
 // --- Mocked Sub-Components for Completeness ---
 
 const PriceChangeNotificationCard = ({ notification, currentFee, client, settings }: any) => {
@@ -857,19 +713,33 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
     const [date, setDate] = useState('');
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const clientEvents = useMemo(() => {
+        // Filter and sort events for this client - CRITICAL FIX: Use client.uid for consistency with AppData listener
+        return poolEvents.filter((e: any) => e.clientId === client.uid)
+            .sort((a: any, b: any) => (toDate(b.eventDate)?.getTime() || 0) - (toDate(a.eventDate)?.getTime() || 0));
+    }, [poolEvents, client.uid]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         try {
-            await createPoolEvent({ clientId: client.id, clientName: client.name, eventDate: new Date(date + 'T12:00:00'), notes });
+            await createPoolEvent({ 
+                clientId: client.uid, // Use UID to match AppData query
+                clientName: client.name, 
+                eventDate: new Date(date + 'T12:00:00'), 
+                notes 
+            });
             showNotification("Evento agendado!", "success");
-            setDate(''); setNotes('');
+            setDate(''); 
+            setNotes('');
         } catch (e: any) {
             showNotification(e.message, "error");
         } finally {
             setLoading(false);
         }
     };
+
     return (
         <Card>
             <CardHeader><h3 className="font-bold flex items-center"><CalendarDaysIcon className="w-5 h-5 mr-2"/> Agendar Uso da Piscina</h3></CardHeader>
@@ -877,8 +747,51 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
                 <form onSubmit={handleSubmit} className="space-y-2">
                     <Input label="Data do Evento" type="date" value={date} onChange={e => setDate(e.target.value)} required />
                     <Input label="Observações" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex: Churrasco, preciso da piscina limpa de manhã" />
-                    <Button type="submit" isLoading={loading}>Agendar</Button>
+                    <Button type="submit" isLoading={loading} className="w-full">Agendar</Button>
                 </form>
+
+                {clientEvents.length > 0 && (
+                    <div className="mt-6 pt-4 border-t dark:border-gray-700">
+                        <h4 className="font-semibold text-sm mb-3 text-gray-700 dark:text-gray-300">Meus Agendamentos:</h4>
+                        <div className="space-y-3">
+                            {clientEvents.map((event: any) => {
+                                const isConfirmed = event.status === 'acknowledged';
+                                return (
+                                    <div 
+                                        key={event.id} 
+                                        className={`p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm border-l-4 shadow-sm transition-all ${isConfirmed ? 'border-green-500' : 'border-yellow-400'}`}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold text-gray-800 dark:text-gray-100">
+                                                    {toDate(event.eventDate)?.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                </p>
+                                                {isConfirmed && <CheckBadgeIcon className="w-4 h-4 text-green-500" />}
+                                            </div>
+                                            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isConfirmed ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                                                {isConfirmed ? 'Confirmado' : 'Pendente'}
+                                            </div>
+                                        </div>
+                                        {event.notes && <p className="text-xs text-gray-600 dark:text-gray-400 italic mt-1 border-t dark:border-gray-700 pt-1">"{event.notes}"</p>}
+                                        
+                                        {isConfirmed ? (
+                                            <div className="mt-2 flex items-center gap-1.5 p-1.5 bg-green-50 dark:bg-green-900/10 rounded border border-green-100 dark:border-green-900/30">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                                <p className="text-[11px] text-green-700 dark:text-green-400 font-semibold uppercase">
+                                                    Recebimento confirmado pela administração
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-2 flex items-center">
+                                                <span className="mr-1">●</span> Aguardando visualização da administração
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </CardContent>
         </Card>
     );
