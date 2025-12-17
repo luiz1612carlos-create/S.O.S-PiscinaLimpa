@@ -44,12 +44,33 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     
     const nextVisit = useMemo(() => {
         if (!clientData || !routes) return null;
-        for (const dayKey of Object.keys(routes)) {
-            const day = routes[dayKey];
-            if (day.clients.some(c => c.id === clientData.id)) {
-                return { day: day.day, isRouteActive: day.isRouteActive };
+        
+        // Portuguese day names as used in the routes state/database
+        const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        const todayIndex = new Date().getDay();
+
+        // Create a sequence starting from today for the next 7 days
+        const searchSequence = [];
+        for (let i = 0; i < 7; i++) {
+            searchSequence.push({
+                index: (todayIndex + i) % 7,
+                offset: i
+            });
+        }
+        
+        for (const item of searchSequence) {
+            const dayName = dayNames[item.index];
+            const routeDay = routes[dayName];
+            
+            // Check if client (by uid or id) exists in this day's route list
+            if (routeDay && routeDay.clients && routeDay.clients.some(c => c.uid === clientData.uid || c.id === clientData.id)) {
+                return { 
+                    day: item.offset === 0 ? 'Hoje' : dayName, 
+                    isRouteActive: routeDay.isRouteActive 
+                };
             }
         }
+        
         return null;
     }, [clientData, routes]);
 
@@ -338,8 +359,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     </div>
                 )}
                 
-                {/* Plan Upgrade / Comparison Card - Only if Simple and VIP enabled */}
-                {clientData.plan === 'Simples' && settings.features.vipPlanEnabled && !clientData.scheduledPlanChange && (
+                {/* Plan Upgrade / Comparison Card - Only if Simple, VIP enabled AND planUpgradeEnabled is TRUE */}
+                {clientData.plan === 'Simples' && settings.features.vipPlanEnabled && settings.features.planUpgradeEnabled && !clientData.scheduledPlanChange && (
                     <Card className="border-2 border-yellow-400 bg-yellow-50 dark:bg-yellow-900/10">
                         <CardContent className="flex flex-col md:flex-row items-center justify-between gap-4">
                             <div className="flex-1">
@@ -427,9 +448,16 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                                     <WeatherSunnyIcon className="w-16 h-16 mx-auto text-yellow-400 mb-2"/>
                                     <p className="text-3xl font-bold">{nextVisit.day}</p>
                                     <p className="text-gray-500">Previsão: Ensolarado, 28°C</p>
-                                    {nextVisit.isRouteActive && <p className="mt-2 text-green-500 font-bold animate-pulse">Equipe em rota!</p>}
+                                    {nextVisit.isRouteActive && (
+                                        <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                                            <p className="text-green-600 dark:text-green-400 font-bold text-sm animate-pulse flex items-center justify-center">
+                                                <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                                                Equipe em rota!
+                                            </p>
+                                        </div>
+                                    )}
                                 </>
-                            ) : <p>Nenhuma visita agendada.</p>}
+                            ) : <p className="text-gray-500 py-4 italic">Nenhuma visita agendada para esta semana.</p>}
                         </CardContent>
                     </Card>
                      <Card data-tour-id="payment">
