@@ -41,10 +41,6 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     const [isPlanUpgradeModalOpen, setIsPlanUpgradeModalOpen] = useState(false);
     const [isRequestingPlanChange, setIsRequestingPlanChange] = useState(false);
     const [selectedUpgradeOptionId, setSelectedUpgradeOptionId] = useState<string>('monthly');
-    
-    // Upgrade Terms Acceptance State
-    const [isUpgradeTermsModalOpen, setIsUpgradeTermsModalOpen] = useState(false);
-    const [hasAgreedToUpgradeTerms, setHasAgreedToUpgradeTerms] = useState(false);
 
     
     const nextVisit = useMemo(() => {
@@ -240,17 +236,6 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         }
     };
     
-    // New step: Open terms before accepting
-    const handleProceedToTerms = () => {
-        if (!activePlanChangeRequest || !activePlanChangeRequest.proposedPrice) return;
-        const selectedOption = upgradeOptions.find(opt => opt.id === selectedUpgradeOptionId);
-        if (!selectedOption) return;
-
-        setIsPlanUpgradeModalOpen(false);
-        setIsUpgradeTermsModalOpen(true);
-        setHasAgreedToUpgradeTerms(false);
-    };
-
     const handleAcceptPlanChange = async () => {
         if (!activePlanChangeRequest || !activePlanChangeRequest.proposedPrice) return;
         
@@ -261,7 +246,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
         try {
             await acceptPlanChange(activePlanChangeRequest.id, selectedOption.price, selectedOption.fidelityPlan);
             showNotification('Upgrade aceito! A mudança será aplicada no próximo ciclo.', 'success');
-            setIsUpgradeTermsModalOpen(false); // Close terms modal
+            setIsPlanUpgradeModalOpen(false);
         } catch (error: any) {
             showNotification(error.message || 'Erro ao aceitar mudança.', 'error');
         } finally {
@@ -586,7 +571,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     footer={
                         <>
                             <Button variant="danger" onClick={handleRejectPlanChange} isLoading={isRequestingPlanChange}>Recusar</Button>
-                            <Button onClick={handleProceedToTerms} isLoading={isRequestingPlanChange}>Aceitar Upgrade</Button>
+                            <Button onClick={handleAcceptPlanChange} isLoading={isRequestingPlanChange}>Aceitar Upgrade</Button>
                         </>
                     }
                 >
@@ -629,46 +614,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                         )}
 
                         <p className="text-xs text-gray-500 text-center mt-4">
-                            Ao prosseguir, você deverá aceitar os termos do novo plano.
-                        </p>
-                    </div>
-                </Modal>
-            )}
-            
-            {isUpgradeTermsModalOpen && settings && (
-                <Modal
-                    isOpen={isUpgradeTermsModalOpen}
-                    onClose={() => { setIsUpgradeTermsModalOpen(false); setIsPlanUpgradeModalOpen(true); }} // Go back to options
-                    title="Termos do Plano VIP"
-                    size="lg"
-                    footer={
-                        <div className="flex justify-between w-full items-center">
-                             <Button variant="secondary" onClick={() => { setIsUpgradeTermsModalOpen(false); setIsPlanUpgradeModalOpen(true); }}>Voltar</Button>
-                             <Button
-                                onClick={handleAcceptPlanChange}
-                                isLoading={isRequestingPlanChange}
-                                disabled={!hasAgreedToUpgradeTerms || isRequestingPlanChange}
-                            >
-                                Confirmar e Mudar Plano
-                            </Button>
-                        </div>
-                    }
-                >
-                    <div className="space-y-4">
-                        <div className="prose dark:prose-invert max-h-64 overflow-y-auto p-2 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
-                            <p className="whitespace-pre-wrap text-sm">{settings.plans.vip.terms}</p>
-                        </div>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={hasAgreedToUpgradeTerms}
-                                onChange={(e) => setHasAgreedToUpgradeTerms(e.target.checked)}
-                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                            />
-                            Li e aceito os termos do Plano VIP.
-                        </label>
-                        <p className="text-xs text-gray-500 mt-2">
-                            A mudança será agendada e entrará em vigor automaticamente após o pagamento da sua próxima fatura atual.
+                            Ao aceitar, a mudança de plano será agendada e entrará em vigor automaticamente após o pagamento da sua próxima fatura atual.
                         </p>
                     </div>
                 </Modal>

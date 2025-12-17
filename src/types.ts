@@ -291,7 +291,6 @@ export interface Settings {
     fidelityPlans: FidelityPlan[];
     features: {
         vipPlanEnabled: boolean;
-        planUpgradeEnabled: boolean; // New field to control upgrade visibility
         vipPlanDisabledMessage: string;
         vipUpgradeTitle?: string;
         vipUpgradeDescription?: string;
@@ -315,7 +314,6 @@ export type PricingSettings = Settings['pricing'];
 export interface AffectedClientPreview {
     id: string;
     name: string;
-    
 }
 
 export interface PendingPriceChange {

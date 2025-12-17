@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { AuthContextType, AppContextType, AdminView } from '../../types';
 import { MenuIcon, SunIcon, MoonIcon, LogoutIcon, UsersIcon, RouteIcon, CheckBadgeIcon, StoreIcon, SettingsIcon, ChartBarIcon, DownloadIcon, CalendarDaysIcon, ArchiveBoxIcon, SparklesIcon } from '../../constants';
@@ -27,9 +26,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ authContext, appContext }) =>
     const [currentView, setCurrentView] = useState<AdminView>('reports');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+    const pendingBudgetsCount = appContext.budgetQuotes.filter(b => b.status === 'pending').length;
+    const pendingPlanRequestsCount = appContext.planChangeRequests.filter(r => r.status === 'pending').length;
+    const totalApprovals = pendingBudgetsCount + pendingPlanRequestsCount;
+
     const menuItems = [
         { id: 'reports', label: 'Relatórios', icon: ChartBarIcon },
-        { id: 'approvals', label: 'Novos Orçamentos', icon: CheckBadgeIcon, count: appContext.budgetQuotes.filter(b => b.status === 'pending').length },
+        { id: 'approvals', label: 'Aprovações', icon: CheckBadgeIcon, count: totalApprovals },
         { id: 'advances', label: 'Adiantamentos', icon: CalendarDaysIcon, count: appContext.advancePaymentRequests.filter(r => r.status === 'pending').length },
         { id: 'events', label: 'Eventos', icon: SparklesIcon, count: appContext.poolEvents.filter(e => e.status === 'notified').length },
         { id: 'clients', label: 'Clientes', icon: UsersIcon },

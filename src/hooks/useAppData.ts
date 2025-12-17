@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
@@ -78,7 +79,6 @@ const defaultSettings: Settings = {
     ],
     features: {
         vipPlanEnabled: true,
-        planUpgradeEnabled: true, // Default to true
         vipPlanDisabledMessage: "Em breve!",
         vipUpgradeTitle: "Descubra o Plano VIP",
         vipUpgradeDescription: "Tenha produtos inclusos, atendimento prioritário e descontos exclusivos.",

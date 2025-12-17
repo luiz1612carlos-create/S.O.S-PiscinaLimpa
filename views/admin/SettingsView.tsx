@@ -1072,6 +1072,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                 />
                             </div>
                         )}
+                        {localSettings.features.vipPlanEnabled && (
+                            <div className="pl-8 mt-2 space-y-2">
+                                <ToggleSwitch 
+                                    label="Permitir Solicitação de Upgrade de Plano pelo Cliente" 
+                                    enabled={localSettings.features.planUpgradeEnabled} 
+                                    onChange={() => handleToggle('planUpgradeEnabled')} 
+                                />
+                                 <Input 
+                                    label="Título do Banner de Upgrade (Dashboard Cliente)" 
+                                    name="vipUpgradeTitle" 
+                                    value={localSettings.features.vipUpgradeTitle || ''} 
+                                    onChange={(e) => handleSimpleChange(e, 'features')} 
+                                />
+                                <Input 
+                                    label="Descrição do Banner de Upgrade" 
+                                    name="vipUpgradeDescription" 
+                                    value={localSettings.features.vipUpgradeDescription || ''} 
+                                    onChange={(e) => handleSimpleChange(e, 'features')} 
+                                />
+                            </div>
+                        )}
                         <ToggleSwitch label="Ativar Loja para Clientes" enabled={localSettings.features.storeEnabled} onChange={() => handleToggle('storeEnabled')} />
                         <ToggleSwitch label="Ativar Plano de Adiantamento" enabled={localSettings.features.advancePaymentPlanEnabled} onChange={() => handleToggle('advancePaymentPlanEnabled')} />
                         

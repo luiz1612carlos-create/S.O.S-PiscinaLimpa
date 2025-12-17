@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AuthContextType, AppContextType } from '../../types';
 import { MoonIcon, SunIcon, LogoutIcon, DashboardIcon, StoreIcon, DownloadIcon, XMarkIcon, QuestionMarkCircleIcon } from '../../constants';
@@ -35,6 +36,13 @@ const clientDashboardTourSteps: TourStep[] = [
         position: 'left',
         title: 'Informações de Pagamento',
         content: 'Acompanhe sua próxima data de vencimento e o valor da mensalidade. Você também pode copiar a chave PIX para facilitar o pagamento.',
+    },
+    {
+        selector: '[data-tour-id="plan-info-header"]',
+        highlightSelector: '[data-tour-id="plan-info"]',
+        position: 'left',
+        title: 'Detalhes do Seu Plano',
+        content: 'Consulte aqui os benefícios inclusos no seu contrato e leia os termos de serviço a qualquer momento.',
     },
     {
         selector: '[data-tour-id="visit-history-header"]',
