@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { AppContextType, StockProduct } from '../../types';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
-import { EditIcon, TrashIcon, PlusIcon } from '../../constants';
+import { EditIcon, TrashIcon, PlusIcon, XMarkIcon } from '../../constants';
 import { Select } from '../../components/Select';
 
 interface StockProductsViewProps {
@@ -12,10 +13,21 @@ interface StockProductsViewProps {
 }
 
 const StockProductsView: React.FC<StockProductsViewProps> = ({ appContext }) => {
-    const { stockProducts, loading, saveStockProduct, deleteStockProduct, showNotification } = appContext;
+    const { stockProducts, clients, loading, saveStockProduct, deleteStockProduct, removeStockProductFromAllClients, showNotification } = appContext;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<StockProduct | Omit<StockProduct, 'id'> | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isCleaning, setIsCleaning] = useState<string | null>(null);
+
+    const usageMap = useMemo(() => {
+        const map: { [key: string]: number } = {};
+        clients.forEach(client => {
+            client.stock.forEach(item => {
+                map[item.productId] = (map[item.productId] || 0) + 1;
+            });
+        });
+        return map;
+    }, [clients]);
 
     const handleOpenModal = (product: StockProduct | null = null) => {
         if (product) {
@@ -45,14 +57,42 @@ const StockProductsView: React.FC<StockProductsViewProps> = ({ appContext }) => 
         }
     };
 
-    const handleDelete = async (productId: string) => {
-        if (window.confirm('Tem certeza que deseja excluir este item de estoque? Isso não afetará o estoque já registrado nos clientes.')) {
+    const handleGlobalWipe = async (productId: string, productName: string) => {
+        const count = usageMap[productId] || 0;
+        if (count === 0) {
+            showNotification('Este produto não está registrado em nenhum cliente.', 'info');
+            return;
+        }
+
+        if (window.confirm(`Você tem certeza que deseja REMOVER o item "${productName}" do estoque de TODOS os ${count} clientes que o possuem?\n\nEsta ação é irreversível e afetará o controle de reposição desses clientes.`)) {
+            setIsCleaning(productId);
             try {
-                await deleteStockProduct(productId);
-                showNotification('Item excluído com sucesso!', 'success');
+                const removedCount = await removeStockProductFromAllClients(productId);
+                showNotification(`Sucesso! O item foi removido do estoque de ${removedCount} clientes.`, 'success');
             } catch (error: any) {
-                showNotification(error.message || 'Erro ao excluir item.', 'error');
+                showNotification(error.message || 'Erro ao realizar limpeza global.', 'error');
+            } finally {
+                setIsCleaning(null);
             }
+        }
+    };
+
+    const handleDelete = async (productId: string, productName: string) => {
+        const count = usageMap[productId] || 0;
+        let cleanup = false;
+
+        if (count > 0) {
+            const choice = window.confirm(`O item "${productName}" está sendo usado por ${count} clientes.\n\nDeseja também REMOVER este item do estoque desses clientes ao excluí-lo do Estoque Mestre?\n\n[OK] Sim, limpar tudo\n[Cancelar] Não, apenas excluir do mestre (os clientes manterão o registro órfão)`);
+            cleanup = choice;
+        } else {
+            if (!window.confirm(`Tem certeza que deseja excluir o item "${productName}" do Estoque Mestre?`)) return;
+        }
+
+        try {
+            await deleteStockProduct(productId, cleanup);
+            showNotification('Item excluído com sucesso!', 'success');
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao excluir item.', 'error');
         }
     };
 
@@ -66,7 +106,7 @@ const StockProductsView: React.FC<StockProductsViewProps> = ({ appContext }) => 
                 </Button>
             </div>
             <p className="mb-6 text-gray-600 dark:text-gray-400">
-                Gerencie a lista de produtos que podem ser adicionados ao estoque de cada cliente. Estes itens são usados para acompanhamento e reposição.
+                Gerencie a lista de produtos que podem ser adicionados ao estoque de cada cliente. Você pode monitorar em quantos clientes cada item está presente e realizar limpezas em lote.
             </p>
             {loading.stockProducts ? <div className="flex justify-center"><Spinner /></div> : (
                 <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-x-auto">
@@ -74,21 +114,38 @@ const StockProductsView: React.FC<StockProductsViewProps> = ({ appContext }) => 
                          <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unidade</th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Uso (Clientes)</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                             </tr>
                         </thead>
                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {stockProducts.map(product => (
                                 <tr key={product.id}>
-                                    <td className="px-6 py-4 whitespace-nowrap font-medium">{product.name}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.description}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap font-medium">
+                                        {product.name}
+                                        <p className="text-xs text-gray-400 font-normal">{product.description}</p>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap">{product.unit}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-center font-bold">
+                                        <span className={`px-2 py-1 rounded-full text-xs ${usageMap[product.id] ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-gray-100 text-gray-400'}`}>
+                                            {usageMap[product.id] || 0}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <div className="flex justify-end gap-2">
+                                            <Button 
+                                                size="sm" 
+                                                variant="secondary" 
+                                                onClick={() => handleGlobalWipe(product.id, product.name)}
+                                                isLoading={isCleaning === product.id}
+                                                disabled={!usageMap[product.id]}
+                                                title="Remover este item do estoque de todos os clientes"
+                                            >
+                                                <XMarkIcon className="w-4 h-4" />
+                                            </Button>
                                             <Button size="sm" variant="secondary" onClick={() => handleOpenModal(product)}><EditIcon className="w-4 h-4" /></Button>
-                                            <Button size="sm" variant="danger" onClick={() => handleDelete(product.id)}><TrashIcon className="w-4 h-4" /></Button>
+                                            <Button size="sm" variant="danger" onClick={() => handleDelete(product.id, product.name)}><TrashIcon className="w-4 h-4" /></Button>
                                         </div>
                                     </td>
                                 </tr>

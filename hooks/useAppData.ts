@@ -79,7 +79,7 @@ const defaultSettings: Settings = {
     ],
     features: {
         vipPlanEnabled: true,
-        planUpgradeEnabled: true, // Default to true
+        planUpgradeEnabled: true,
         vipPlanDisabledMessage: "Em breve!",
         vipUpgradeTitle: "Descubra o Plano VIP",
         vipUpgradeDescription: "Tenha produtos inclusos, atendimento prioritário e descontos exclusivos.",
@@ -128,7 +128,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const [planChangeRequests, setPlanChangeRequests] = useState<PlanChangeRequest[]>([]);
     const [setupCheck, setSetupCheck] = useState<'checking' | 'needed' | 'done'>('checking');
     
-    // New state for advance plan logic
     const [advancePlanUsage, setAdvancePlanUsage] = useState({ count: 0, percentage: 0 });
     const [isAdvancePlanGloballyAvailable, setIsAdvancePlanGloballyAvailable] = useState(false);
 
@@ -140,12 +139,10 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const isUserAdmin = userData?.role === 'admin';
     const isUserTechnician = userData?.role === 'technician';
 
-    // Generic function to set loading state
     const setLoadingState = <K extends keyof typeof loading>(key: K, value: boolean) => {
         setLoading(prev => ({ ...prev, [key]: value }));
     };
     
-    // Initial Setup Check (runs once for everyone)
     useEffect(() => {
         const checkAdminExists = async () => {
             try {
@@ -159,7 +156,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         checkAdminExists();
     }, []);
 
-    // Logic to calculate advance plan usage percentage
     useEffect(() => {
         const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
         if (activeClients.length === 0) {
@@ -177,7 +173,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         setAdvancePlanUsage({ count: advancePlanClientCount, percentage });
     }, [clients]);
 
-    // Logic to determine if advance plan is available based on usage and settings
     useEffect(() => {
         if (!settings) return;
         const isEnabledByAdmin = settings.features.advancePaymentPlanEnabled;
@@ -185,83 +180,71 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         setIsAdvancePlanGloballyAvailable(isEnabledByAdmin && isBelowThreshold);
     }, [settings, advancePlanUsage]);
 
-    // Replenishment Automation
-    useEffect(() => {
-        // Run only once per session for admin
-        const hasRunKey = `replenishmentCheck_${new Date().toISOString().split('T')[0]}`;
-        if (!isUserAdmin || sessionStorage.getItem(hasRunKey) || !settings || clients.length === 0 || products.length === 0) {
-            return;
+    const triggerReplenishmentAnalysis = async (): Promise<number> => {
+        if (!isUserAdmin || !settings || clients.length === 0 || products.length === 0) {
+            return 0;
         }
 
-        const runReplenishmentCheck = async () => {
-            console.log("Running replenishment check...");
-            const threshold = settings.automation.replenishmentStockThreshold;
-            const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
-            const pendingQuotesClientIds = new Set(replenishmentQuotes.filter(q => q.status === 'suggested' || q.status === 'sent').map(q => q.clientId));
+        console.log("Starting enhanced replenishment analysis...");
+        const threshold = settings.automation.replenishmentStockThreshold;
+        const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
+        const pendingQuotesClientIds = new Set(replenishmentQuotes.filter(q => q.status === 'suggested' || q.status === 'sent').map(q => q.clientId));
+        
+        let generatedCount = 0;
 
-            for (const client of activeClients) {
-                if (pendingQuotesClientIds.has(client.id)) continue;
+        for (const client of activeClients) {
+            if (pendingQuotesClientIds.has(client.id)) continue;
 
-                // Determine low stock items based on Global Threshold OR specific Max Quantity logic
-                const lowStockItems = client.stock.filter(item => {
-                    if (item.maxQuantity) {
-                         // If maxQuantity is defined, we consider it low if it's below 30% OR below the global threshold
-                         return item.quantity <= Math.max(threshold, item.maxQuantity * 0.3);
+            const lowStockItems = client.stock.filter(item => {
+                const limit = item.maxQuantity ? Math.max(threshold, item.maxQuantity * 0.3) : threshold;
+                return item.quantity <= limit;
+            });
+
+            if (lowStockItems.length === 0) continue;
+            
+            const itemsToReplenish: any[] = [];
+            let total = 0;
+
+            for (const lowItem of lowStockItems) {
+                const productInfo = products.find(p => 
+                    p.id === lowItem.productId || 
+                    p.name.toLowerCase().trim() === lowItem.name.toLowerCase().trim()
+                );
+
+                if (productInfo && productInfo.stock > 0) {
+                    let quantityToSuggest = 0;
+                    
+                    if (lowItem.maxQuantity && lowItem.maxQuantity > lowItem.quantity) {
+                        quantityToSuggest = lowItem.maxQuantity - lowItem.quantity;
+                    } else {
+                        quantityToSuggest = 5;
                     }
-                    return item.quantity <= threshold;
-                });
 
-                if (lowStockItems.length === 0) continue;
-                
-                const itemsToReplenish: any[] = [];
-                let total = 0;
-
-                for (const lowItem of lowStockItems) {
-                    const productInfo = products.find(p => p.id === lowItem.productId);
-                    if (productInfo && productInfo.stock > 0) {
-                        // Calculate suggested quantity
-                        let quantityToSuggest = 0;
-                        
-                        if (lowItem.maxQuantity && lowItem.maxQuantity > lowItem.quantity) {
-                            // If max quantity is set, fill up to max
-                            quantityToSuggest = lowItem.maxQuantity - lowItem.quantity;
-                        } else {
-                            // Fallback logic: suggest 5 units or enough to pass threshold
-                            quantityToSuggest = 5;
-                        }
-
-                        if (quantityToSuggest > 0) {
-                            itemsToReplenish.push({ ...productInfo, quantity: quantityToSuggest });
-                            total += productInfo.price * quantityToSuggest;
-                        }
+                    if (quantityToSuggest > 0) {
+                        itemsToReplenish.push({ ...productInfo, quantity: quantityToSuggest });
+                        total += productInfo.price * quantityToSuggest;
                     }
-                }
-
-                if (itemsToReplenish.length > 0) {
-                    const newQuote: Omit<ReplenishmentQuote, 'id'> = {
-                        clientId: client.id,
-                        clientName: client.name,
-                        items: itemsToReplenish,
-                        total,
-                        status: 'suggested',
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    };
-                    await db.collection('replenishmentQuotes').add(newQuote);
-                    console.log(`Generated replenishment quote for ${client.name}`);
                 }
             }
-            sessionStorage.setItem(hasRunKey, 'true');
-        };
 
-        const timer = setTimeout(runReplenishmentCheck, 5000);
-        return () => clearTimeout(timer);
-
-    }, [isUserAdmin, settings, clients, products, replenishmentQuotes]);
+            if (itemsToReplenish.length > 0) {
+                const newQuote: Omit<ReplenishmentQuote, 'id'> = {
+                    clientId: client.id,
+                    clientName: client.name,
+                    items: itemsToReplenish,
+                    total,
+                    status: 'suggested',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                };
+                await db.collection('replenishmentQuotes').add(newQuote);
+                generatedCount++;
+            }
+        }
+        return generatedCount;
+    };
     
-    // Price Change Automation
     useEffect(() => {
-        // Ensure settings are loaded before applying changes to prevent overwriting with null/stale data
         if (!isUserAdmin || pendingPriceChanges.length === 0 || !settings) return;
 
         const applyOverduePriceChanges = async () => {
@@ -272,41 +255,33 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
             if (overdueChanges.length === 0) return;
             
-            console.log(`Applying ${overdueChanges.length} overdue price change(s)...`);
-
             for (const change of overdueChanges) {
                 try {
                     const batch = db.batch();
                     const settingsRef = db.collection('settings').doc('main');
                     
-                    // CRITICAL: Snapshot pricing for VIP clients so they don't suffer the price increase.
-                    // VIP clients who are active and don't already have a custom pricing set should be locked to the current (old) settings.
                     const activeVips = clients.filter(c => c.clientStatus === 'Ativo' && c.plan === 'VIP');
                     
                     activeVips.forEach(vip => {
-                        // If client doesn't have customPricing, lock them to the current pricing before it updates.
-                        // If they already have customPricing, they are already protected/customized.
                         if (!vip.customPricing) {
                             const vipRef = db.collection('clients').doc(vip.id);
                             batch.update(vipRef, { customPricing: settings.pricing });
                         }
                     });
 
-                    // Update global pricing for Simples clients and new contracts
                     batch.set(settingsRef, { pricing: change.newPricing }, { merge: true });
 
                     const changeRef = db.collection('pendingPriceChanges').doc(change.id);
                     batch.update(changeRef, { status: 'applied' });
                     
                     await batch.commit();
-                    console.log(`Price change ${change.id} applied successfully.`);
                 } catch (error) {
                     console.error(`Failed to apply price change ${change.id}:`, error);
                 }
             }
         };
 
-        const timer = setTimeout(applyOverduePriceChanges, 3000); // Small delay to ensure all data is loaded
+        const timer = setTimeout(applyOverduePriceChanges, 3000);
         return () => clearTimeout(timer);
 
     }, [isUserAdmin, pendingPriceChanges, settings, clients]);
@@ -386,7 +361,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); unsubEvents(); unsubPlanChanges(); };
     }, [isUserAdmin, isUserTechnician]);
     
-    // Products and Settings listeners (publicly available)
     useEffect(() => {
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
@@ -404,7 +378,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
              setLoadingState('settings', false);
         });
         
-        // Listen for banks publicly for the client dashboard to resolve pix keys
         const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
             setBanks(data);
@@ -412,14 +385,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
 
         return () => { unsubProducts(); unsubSettings(); unsubBanks(); };
-    }, []); // Removed setupCheck dependency to load settings always
+    }, []);
 
-     // Client-specific data fetching
     useEffect(() => {
         if (userData?.role !== 'client' || !user) return;
         
-        // Automatically fetch and listen to the client document if user is a client.
-        // This ensures App.tsx has access to the client data (like maintenance permission) immediately.
         const unsubClient = db.collection('clients').where('uid', '==', user.uid).limit(1).onSnapshot(snapshot => {
             if (!snapshot.empty) {
                 const doc = snapshot.docs[0];
@@ -472,7 +442,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setLoadingState('poolEvents', false);
         });
         
-        // Also fetch pending price changes for clients so they can be notified
         const unsubPendingChanges = db.collection('pendingPriceChanges')
             .where('status', '==', 'pending')
             .onSnapshot(snapshot => {
@@ -502,7 +471,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             throw new Error("Um administrador já existe. A criação foi cancelada.");
         }
         try {
-            // Restore Firebase Auth usage
             const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
             const newUid = userCredential.user.uid;
             
@@ -520,9 +488,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     };
 
     const createTechnician = async (name: string, email: string, pass: string) => {
-        // WARNING: This client-side method will sign out the current admin user.
-        // A backend function (Firebase Function) is the recommended way to handle user creation by an admin.
-        // Given the project constraints, we proceed with this method and the admin will need to log in again.
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
             const newUid = userCredential.user.uid;
@@ -534,12 +499,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 uid: newUid,
             });
 
-            // At this point, the admin is logged out. We sign out the newly created tech
-            // to ensure they are not left logged in, forcing a clean login flow for everyone.
             await auth.signOut();
         } catch (error: any) {
-            // If user creation fails, the admin should still be logged in.
-            // We can check for specific errors, like 'auth/email-already-in-use'.
             console.error("Error creating technician:", error);
             if (error.code === 'auth/email-already-in-use') {
                 throw new Error("Este e-mail já está em uso por outra conta.");
@@ -555,14 +516,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         const budget = budgetDoc.data() as BudgetQuote;
 
-        // Proactively check if the email is already in use
         try {
             const signInMethods = await auth.fetchSignInMethodsForEmail(budget.email);
             if (signInMethods.length > 0) {
                 throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
             }
         } catch (error: any) {
-            // Re-throw our custom error or a generic one
             if (error.message.startsWith("Já existe uma conta")) {
                 throw error;
             }
@@ -570,7 +529,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             throw new Error("Falha ao verificar o e-mail do usuário. Tente novamente.");
         }
 
-        // If the email is not in use, proceed with creating the new user and client
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(budget.email, password);
             const newUid = userCredential.user.uid;
@@ -595,7 +553,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 poolDimensions: budget.poolDimensions,
                 poolVolume: budget.poolVolume,
                 hasWellWater: budget.hasWellWater,
-                includeProducts: false, // Always false from budget
+                includeProducts: false,
                 isPartyPool: budget.isPartyPool,
                 plan: budget.plan,
                 clientStatus: 'Ativo',
@@ -611,7 +569,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 distanceFromHq: distanceFromHq || budget.distanceFromHq || 0,
             };
             
-            // FIX: Conditionally add fidelityPlan to avoid saving 'undefined' to Firestore.
             if (budget.fidelityPlan) {
                 newClient.fidelityPlan = budget.fidelityPlan;
             }
@@ -625,11 +582,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
         } catch (error: any) {
             console.error("Erro ao aprovar orçamento de novo cliente:", error);
-            // Add a fallback check for the specific error code from Firebase
             if (error.code === 'auth/email-already-in-use') {
                 throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
             }
-            // The original Firebase error is often more specific (e.g., weak password)
             throw error;
         }
     };
@@ -670,25 +625,19 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             'payment.status': 'Pago'
         };
 
-        // This is a regular payment, so if there was an advance plan, it's now over.
-        // We clear the field to correctly reflect the client's status.
         if (client.advancePaymentUntil) {
             clientUpdate.advancePaymentUntil = firebase.firestore.FieldValue.delete();
         }
 
-        // Check for SCHEDULED PLAN CHANGE
-        // If present, apply the new plan now so the next cycle uses the new terms.
         if (client.scheduledPlanChange) {
             clientUpdate.plan = client.scheduledPlanChange.newPlan;
             
-            // Apply new fidelity plan if set
             if (client.scheduledPlanChange.fidelityPlan) {
                 clientUpdate.fidelityPlan = client.scheduledPlanChange.fidelityPlan;
             } else {
                 clientUpdate.fidelityPlan = firebase.firestore.FieldValue.delete();
             }
             
-            // Remove the schedule
             clientUpdate.scheduledPlanChange = firebase.firestore.FieldValue.delete();
         }
 
@@ -730,10 +679,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         let docRef;
     
         if ('id' in product) {
-            // Existing product
             docRef = db.collection('products').doc(product.id);
         } else {
-            // New product
             docRef = db.collection('products').doc();
         }
     
@@ -745,11 +692,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         }
         
         if ('id' in product) {
-            // Update existing
             const { id, ...dataToUpdate } = productData as Product;
             return docRef.update(dataToUpdate);
         } else {
-            // Set new with specific ID
             return docRef.set(productData);
         }
     };
@@ -763,7 +708,27 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return db.collection('stockProducts').add(product);
     };
 
-    const deleteStockProduct = (productId: string) => db.collection('stockProducts').doc(productId).delete();
+    const deleteStockProduct = async (productId: string, cleanupClients = false) => {
+        if (cleanupClients) {
+            await removeStockProductFromAllClients(productId);
+        }
+        return db.collection('stockProducts').doc(productId).delete();
+    };
+
+    const removeStockProductFromAllClients = async (productId: string): Promise<number> => {
+        const clientsWithProduct = clients.filter(c => c.stock.some(s => s.productId === productId));
+        if (clientsWithProduct.length === 0) return 0;
+
+        const batch = db.batch();
+        clientsWithProduct.forEach(client => {
+            const updatedStock = client.stock.filter(s => s.productId !== productId);
+            const clientRef = db.collection('clients').doc(client.id);
+            batch.update(clientRef, { stock: updatedStock });
+        });
+
+        await batch.commit();
+        return clientsWithProduct.length;
+    };
 
     const saveBank = (bank: Omit<Bank, 'id'> | Bank) => {
         if ('id' in bank) {
@@ -1008,7 +973,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
             await db.collection('routes').doc('main').set({});
             
-            // Note: Cannot call showNotification directly here, caller should handle it.
             return Promise.resolve();
         } catch (error) {
             console.error("Erro ao resetar os dados:", error);
@@ -1038,12 +1002,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         const currentSettings = settingsDoc.data() as Settings;
         const currentRecesses = currentSettings.recessPeriods || [];
 
-        if ('id' in recess) { // Update existing
+        if ('id' in recess) {
             const index = currentRecesses.findIndex(r => r.id === recess.id);
             if (index > -1) {
                 currentRecesses[index] = recess;
             }
-        } else { // Add new
+        } else {
             const newRecess = { ...recess, id: db.collection('settings').doc().id };
             currentRecesses.push(newRecess);
         }
@@ -1095,7 +1059,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 scheduledPlanChange: {
                     newPlan: request.requestedPlan,
                     newPrice: price,
-                    effectiveDate: firebase.firestore.FieldValue.serverTimestamp()
+                    effectiveDate: firebase.firestore.Timestamp.fromDate(new Date())
                 }
             };
             if (fidelityPlan) updateData.scheduledPlanChange.fidelityPlan = fidelityPlan;
@@ -1115,10 +1079,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     };
 
     const acknowledgeTerms = async (clientId: string) => {
-        // Encontrar o documento correto pelo campo uid, pois clients é uma array e não sabemos o doc ID diretamente sem iterar
-        // Mas a função pode receber o doc ID se preferir. Vamos usar o clientId como o ID do documento.
-        // Se clientId for o UID (auth), precisamos buscar. Se for o doc ID, é direto.
-        // O `clientData.id` no ClientDashboardView é o ID do documento.
         await db.collection('clients').doc(clientId).update({
             lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -1130,9 +1090,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         setupCheck, createInitialAdmin, createTechnician,
         isAdvancePlanGloballyAvailable, advancePlanUsage,
         approveBudgetQuote, rejectBudgetQuote, updateClient, deleteClient, markAsPaid, updateClientStock,
-        scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, saveBank, deleteBank,
+        scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, removeStockProductFromAllClients, saveBank, deleteBank,
         updateOrderStatus, updateSettings, schedulePriceChange, createBudgetQuote, createOrder, getClientData,
-        updateReplenishmentQuoteStatus, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
+        updateReplenishmentQuoteStatus, triggerReplenishmentAnalysis, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
         addVisitRecord,
         resetReportsData,
         createPoolEvent,

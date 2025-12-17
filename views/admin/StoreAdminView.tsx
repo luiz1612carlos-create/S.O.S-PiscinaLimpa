@@ -1,16 +1,15 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AppContextType, Product, Order, OrderStatus, ReplenishmentQuote } from '../../types';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { AppContextType, Product, Order, OrderStatus, ReplenishmentQuote, Client, ClientProduct } from '../../types';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Spinner } from '../../components/Spinner';
-import { EditIcon, TrashIcon, PlusIcon, CheckIcon, XMarkIcon } from '../../constants';
+import { EditIcon, TrashIcon, PlusIcon, CheckIcon, XMarkIcon, SparklesIcon, CloudRainIcon } from '../../constants';
 import { Select } from '../../components/Select';
 import { Card, CardContent, CardHeader } from '../../components/Card';
-import { db } from '../../firebase'; // Import Firestore instance for paginated queries
+import { db } from '../../firebase';
 
-// Helper function to safely convert Firestore timestamps or strings to Date objects
 const toDate = (timestamp: any): Date | null => {
     if (!timestamp) return null;
     if (typeof timestamp.toDate === 'function') return timestamp.toDate();
@@ -63,9 +62,68 @@ const StoreAdminView: React.FC<StoreAdminViewProps> = ({ appContext }) => {
 };
 
 const ReplenishmentManagement = ({ appContext }: { appContext: AppContextType }) => {
-    const { replenishmentQuotes, loading, updateReplenishmentQuoteStatus, showNotification } = appContext;
+    const { replenishmentQuotes, clients, settings, loading, updateReplenishmentQuoteStatus, triggerReplenishmentAnalysis, showNotification } = appContext;
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
     
+    // Filtra orçamentos já gerados
+    const suggestedQuotes = useMemo(() => {
+        return replenishmentQuotes.filter(q => q.status === 'suggested');
+    }, [replenishmentQuotes]);
+
+    // Análise EM TEMPO REAL de quem tem estoque baixo mas ainda não tem orçamento gerado
+    const clientsWithLiveLowStock = useMemo(() => {
+        if (!settings) return [];
+        const threshold = settings.automation.replenishmentStockThreshold;
+        const pendingClientIds = new Set(replenishmentQuotes.filter(q => q.status !== 'rejected' && q.status !== 'approved').map(q => q.clientId));
+
+        return clients
+            .filter(c => c.clientStatus === 'Ativo' && !pendingClientIds.has(c.id))
+            .map(client => {
+                const lowStockItems = client.stock.filter(item => {
+                    const limit = item.maxQuantity ? Math.max(threshold, item.maxQuantity * 0.3) : threshold;
+                    return item.quantity <= limit;
+                });
+                return { client, lowStockItems };
+            })
+            .filter(data => data.lowStockItems.length > 0);
+    }, [clients, settings, replenishmentQuotes]);
+
+    const filteredQuotes = useMemo(() => {
+        const term = searchTerm.toLowerCase().trim();
+        if (!term) return suggestedQuotes;
+        return suggestedQuotes.filter(q => 
+            q.clientName.toLowerCase().includes(term) || 
+            q.items.some(i => i.name.toLowerCase().includes(term))
+        );
+    }, [suggestedQuotes, searchTerm]);
+
+    const filteredLiveAlerts = useMemo(() => {
+        const term = searchTerm.toLowerCase().trim();
+        if (!term) return clientsWithLiveLowStock;
+        return clientsWithLiveLowStock.filter(data => 
+            data.client.name.toLowerCase().includes(term) ||
+            data.lowStockItems.some(i => i.name.toLowerCase().includes(term))
+        );
+    }, [clientsWithLiveLowStock, searchTerm]);
+
+    const handleAnalyze = async () => {
+        setIsAnalyzing(true);
+        try {
+            const count = await triggerReplenishmentAnalysis();
+            if (count > 0) {
+                showNotification(`Sucesso! ${count} novos orçamentos de reposição gerados.`, 'success');
+            } else {
+                showNotification('Nenhum cliente novo com estoque baixo identificado para os produtos cadastrados na loja.', 'info');
+            }
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao processar análise.', 'error');
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
     const handleSend = async (quoteId: string) => {
         setProcessingId(quoteId);
         try {
@@ -90,47 +148,103 @@ const ReplenishmentManagement = ({ appContext }: { appContext: AppContextType })
         }
     };
 
-    const suggestedQuotes = replenishmentQuotes.filter(q => q.status === 'suggested');
-
     return (
-        <div>
-             {loading.replenishmentQuotes ? (
-                <div className="flex justify-center mt-8"><Spinner size="lg" /></div>
-            ) : suggestedQuotes.length === 0 ? (
-                <p>Nenhuma sugestão de reposição gerada no momento.</p>
-            ) : (
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {suggestedQuotes.map(quote => (
-                        <Card key={quote.id}>
-                            <CardHeader>
-                                <h3 className="text-xl font-semibold">{quote.clientName}</h3>
-                                <p className="text-sm text-gray-500">Sugestão de Reposição</p>
-                            </CardHeader>
-                            <CardContent>
-                                <ul className="space-y-2">
-                                    {quote.items.map(item => (
-                                        <li key={item.id} className="flex justify-between">
-                                            <span>{item.name} x {item.quantity}</span>
-                                            <span>R$ {(item.price * item.quantity).toFixed(2)}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                                <div className="mt-4 pt-2 border-t dark:border-gray-700 text-right">
-                                    <p className="font-bold text-lg">Total: R$ {quote.total.toFixed(2)}</p>
-                                </div>
-                            </CardContent>
-                            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
-                                <Button size="sm" variant="danger" onClick={() => handleDiscard(quote.id)} isLoading={processingId === quote.id} disabled={!!processingId}>
-                                    <XMarkIcon className="w-4 h-4 mr-1"/> Descartar
-                                </Button>
-                                <Button size="sm" onClick={() => handleSend(quote.id)} isLoading={processingId === quote.id} disabled={!!processingId}>
-                                    <CheckIcon className="w-4 h-4 mr-1"/> Enviar ao Cliente
-                                </Button>
-                            </div>
-                        </Card>
-                    ))}
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+                <div className="w-full md:w-1/2">
+                    <Input
+                        label="Buscar por Cliente ou Produto"
+                        placeholder="Pesquise para ver quem precisa de reposição..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        containerClassName="mb-0"
+                    />
                 </div>
-            )}
+                <Button 
+                    onClick={handleAnalyze} 
+                    isLoading={isAnalyzing}
+                    className="w-full md:w-auto bg-purple-600 hover:bg-purple-700"
+                >
+                    <SparklesIcon className="w-5 h-5 mr-2" />
+                    Gerar Propostas de Orçamento
+                </Button>
+            </div>
+
+            {/* Seção 1: Orçamentos Prontos para Envio */}
+            <div>
+                <h3 className="text-xl font-bold mb-4 flex items-center">
+                    <CheckIcon className="w-6 h-6 mr-2 text-green-500" />
+                    Orçamentos Propostos ({filteredQuotes.length})
+                </h3>
+                {filteredQuotes.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
+                        Nenhum orçamento sugerido corresponde à busca.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filteredQuotes.map(quote => (
+                            <Card key={quote.id} className="border-t-4 border-primary-500">
+                                <CardHeader>
+                                    <h3 className="text-xl font-semibold">{quote.clientName}</h3>
+                                </CardHeader>
+                                <CardContent>
+                                    <ul className="space-y-2">
+                                        {quote.items.map(item => (
+                                            <li key={item.id} className="flex justify-between text-sm">
+                                                <span className="text-gray-600 dark:text-gray-400">{item.name} <span className="font-bold">x {item.quantity}</span></span>
+                                                <span className="font-medium">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <div className="mt-4 pt-2 border-t dark:border-gray-700 text-right">
+                                        <p className="text-xs text-gray-400">Total sugerido:</p>
+                                        <p className="font-bold text-xl text-primary-600">R$ {quote.total.toFixed(2)}</p>
+                                    </div>
+                                </CardContent>
+                                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center gap-2">
+                                    <Button variant="secondary" size="sm" onClick={() => handleDiscard(quote.id)} isLoading={processingId === quote.id} disabled={!!processingId} className="flex-1">
+                                        Descartar
+                                    </Button>
+                                    <Button size="sm" onClick={() => handleSend(quote.id)} isLoading={processingId === quote.id} disabled={!!processingId} className="flex-1">
+                                        Propor ao Cliente
+                                    </Button>
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Seção 2: Alertas Críticos (Análise em Tempo Real) */}
+            <div className="pt-8 border-t dark:border-gray-700">
+                <h3 className="text-xl font-bold mb-4 flex items-center text-red-500">
+                    <CloudRainIcon className="w-6 h-6 mr-2" />
+                    Alertas Críticos de Estoque ({filteredLiveAlerts.length})
+                </h3>
+                <p className="text-sm text-gray-500 mb-4 italic">Estes clientes têm estoque baixo, mas ainda não possuem um orçamento gerado. Clique em "Gerar Propostas" para criar os orçamentos.</p>
+                
+                {filteredLiveAlerts.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
+                        Nenhum cliente adicional com estoque baixo identificado.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {filteredLiveAlerts.map(data => (
+                            <div key={data.client.id} className="p-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/50 rounded-lg shadow-sm">
+                                <h4 className="font-bold text-red-800 dark:text-red-300 truncate">{data.client.name}</h4>
+                                <div className="mt-2 space-y-1">
+                                    {data.lowStockItems.map(item => (
+                                        <div key={item.productId} className="flex justify-between text-xs">
+                                            <span className="text-gray-600 dark:text-gray-400">{item.name}:</span>
+                                            <span className="font-bold text-red-600">{item.quantity} / {item.maxQuantity}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
@@ -145,7 +259,6 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
     const [productImageFile, setProductImageFile] = useState<File | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // State for infinite scroll
     const [products, setProducts] = useState<Product[]>([]);
     const [lastVisible, setLastVisible] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -183,7 +296,6 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
     }, [lastVisible, loading, showNotification]);
 
     useEffect(() => {
-        // Initial fetch
         setHasMore(true);
         setLastVisible(null);
         fetchProducts(true);
@@ -222,7 +334,6 @@ const ProductsManagement = ({ appContext }: { appContext: AppContextType }) => {
         try {
             await saveProduct(selectedProduct, productImageFile || undefined);
             showNotification('Produto salvo com sucesso!', 'success');
-            // Reset and refetch to ensure correct order
             setProducts([]);
             setLastVisible(null);
             setHasMore(true);

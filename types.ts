@@ -17,7 +17,6 @@ export type AdvancePaymentRequestStatus = 'pending' | 'approved' | 'rejected';
 export type PoolEventStatus = 'notified' | 'acknowledged';
 export type PlanChangeStatus = 'pending' | 'quoted' | 'accepted' | 'rejected';
 
-// FIX: Add missing AdminView type used in AdminLayout.
 export type AdminView = 'reports' | 'approvals' | 'advances' | 'events' | 'clients' | 'routes' | 'store' | 'stock' | 'settings';
 
 export interface Address {
@@ -40,7 +39,7 @@ export interface ClientProduct {
     productId: string;
     name: string;
     quantity: number;
-    maxQuantity?: number; // Added for stock management
+    maxQuantity?: number;
 }
 
 export interface Bank {
@@ -57,7 +56,7 @@ export interface Transaction {
     bankId: string;
     bankName: string;
     amount: number;
-    date: any; // Firestore Timestamp
+    date: any;
 }
 
 export interface FidelityPlan {
@@ -70,7 +69,7 @@ export interface Visit {
     id: string;
     technicianId: string;
     technicianName: string;
-    timestamp: any; // Firestore Timestamp
+    timestamp: any;
     ph: number;
     cloro: number;
     alcalinidade: number;
@@ -108,21 +107,21 @@ export interface Client {
     poolStatus: PoolStatus;
     payment: {
         status: PaymentStatus;
-        dueDate: string; // ISO string
+        dueDate: string;
     };
     stock: ClientProduct[];
     pixKey?: string;
     pixKeyRecipient?: string;
     bankId?: string;
-    allowAccessInMaintenance?: boolean; // Permite acesso durante modo de manutenção
-    createdAt: any; // Firestore Timestamp
+    allowAccessInMaintenance?: boolean;
+    createdAt: any;
     visitHistory?: Visit[];
-    lastVisitDuration?: number; // in minutes
-    advancePaymentUntil?: any; // Firestore Timestamp
-    customPricing?: PricingSettings; // Allows locking pricing for specific clients (e.g. VIPs)
-    distanceFromHq?: number; // Distance from headquarters in KM
-    scheduledPlanChange?: ScheduledPlanChange; // New field for plan upgrades waiting for next cycle
-    lastAcceptedTermsAt?: any; // Firestore Timestamp - Quando o cliente aceitou os termos pela última vez
+    lastVisitDuration?: number;
+    advancePaymentUntil?: any;
+    customPricing?: PricingSettings;
+    distanceFromHq?: number;
+    scheduledPlanChange?: ScheduledPlanChange;
+    lastAcceptedTermsAt?: any;
 }
 
 export interface BudgetQuote {
@@ -143,7 +142,7 @@ export interface BudgetQuote {
     fidelityPlan?: FidelityPlan;
     monthlyFee: number;
     status: BudgetQuoteStatus;
-    createdAt: any; // Firestore Timestamp
+    createdAt: any;
     distanceFromHq?: number;
 }
 
@@ -197,7 +196,7 @@ export interface Order {
     items: CartItem[];
     total: number;
     status: OrderStatus;
-    createdAt: any; // Firestore Timestamp
+    createdAt: any;
 }
 
 export interface ReplenishmentQuote {
@@ -225,25 +224,25 @@ export interface AdvancePaymentRequest {
     originalAmount: number;
     finalAmount: number;
     status: AdvancePaymentRequestStatus;
-    createdAt: any; // Firestore Timestamp
-    updatedAt: any; // Firestore Timestamp
+    createdAt: any;
+    updatedAt: any;
 }
 
 export interface PoolEvent {
     id: string;
     clientId: string;
     clientName: string;
-    eventDate: any; // Firestore Timestamp
+    eventDate: any;
     notes: string;
     status: PoolEventStatus;
-    createdAt: any; // Firestore Timestamp
+    createdAt: any;
 }
 
 export interface RecessPeriod {
     id: string;
     name: string;
-    startDate: any; // Firestore Timestamp
-    endDate: any;   // Firestore Timestamp
+    startDate: any;
+    endDate: any;
 }
 
 export interface LogoTransforms {
@@ -265,8 +264,8 @@ export interface Settings {
     pixKey: string;
     pixKeyRecipient?: string;
     whatsappMessageTemplate?: string;
-    announcementMessageTemplate?: string; // New field for the announcement
-    termsUpdatedAt?: any; // Firestore Timestamp - Quando os termos foram alterados pela última vez
+    announcementMessageTemplate?: string;
+    termsUpdatedAt?: any;
     pricing: {
         perKm: number;
         wellWaterFee: number;
@@ -293,7 +292,7 @@ export interface Settings {
     fidelityPlans: FidelityPlan[];
     features: {
         vipPlanEnabled: boolean;
-        planUpgradeEnabled: boolean; // New field to control upgrade visibility
+        planUpgradeEnabled: boolean;
         vipPlanDisabledMessage: string;
         vipUpgradeTitle?: string;
         vipUpgradeDescription?: string;
@@ -321,18 +320,18 @@ export interface AffectedClientPreview {
 
 export interface PendingPriceChange {
     id: string;
-    effectiveDate: any; // Firestore Timestamp
+    effectiveDate: any;
     newPricing: PricingSettings;
     affectedClients: AffectedClientPreview[];
     status: 'pending' | 'applied';
-    createdAt: any; // Firestore Timestamp
+    createdAt: any;
 }
 
 
 export type NotificationType = 'success' | 'error' | 'info';
 
 export interface AuthContextType {
-    user: any | null; // Firebase User
+    user: any | null;
     userData: UserData | null;
     login: (email: string, pass: string) => Promise<void>;
     logout: () => Promise<void>;
@@ -395,7 +394,8 @@ export interface AppData {
     saveProduct: (product: Omit<Product, 'id'> | Product, imageFile?: File) => Promise<void>;
     deleteProduct: (productId: string) => Promise<void>;
     saveStockProduct: (product: Omit<StockProduct, 'id'> | StockProduct) => Promise<void>;
-    deleteStockProduct: (productId: string) => Promise<void>;
+    deleteStockProduct: (productId: string, cleanupClients?: boolean) => Promise<void>;
+    removeStockProductFromAllClients: (productId: string) => Promise<number>;
     saveBank: (bank: Omit<Bank, 'id'> | Bank) => Promise<void>;
     deleteBank: (bankId: string) => Promise<void>;
     updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
@@ -407,6 +407,7 @@ export interface AppData {
     createInitialAdmin: (name: string, email: string, pass: string) => Promise<void>;
     createTechnician: (name: string, email: string, pass: string) => Promise<void>;
     updateReplenishmentQuoteStatus: (quoteId: string, status: ReplenishmentQuoteStatus) => Promise<void>;
+    triggerReplenishmentAnalysis: () => Promise<number>;
     createAdvancePaymentRequest: (request: Omit<AdvancePaymentRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>) => Promise<void>;
     approveAdvancePaymentRequest: (requestId: string) => Promise<void>;
     rejectAdvancePaymentRequest: (requestId: string) => Promise<void>;
