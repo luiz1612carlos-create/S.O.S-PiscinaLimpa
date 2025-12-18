@@ -9,7 +9,7 @@ import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { ClientStockManager } from '../../components/ClientStockManager';
-import { SparklesIcon } from '../../constants';
+import { SparklesIcon, CheckBadgeIcon } from '../../constants';
 
 interface ClientsViewProps {
     appContext: AppContextType;
@@ -39,7 +39,7 @@ interface ClientFormData extends Omit<Client, 'poolDimensions'> {
 
 
 const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
-    const { clients, loading, products, banks, updateClient, deleteClient, markAsPaid, showNotification, settings, stockProducts } = appContext;
+    const { clients, loading, products, banks, updateClient, deleteClient, markAsPaid, showNotification, settings, stockProducts, cancelScheduledPlanChange } = appContext;
     const [filterPlan, setFilterPlan] = useState<PlanType | 'Todos'>('Todos');
     const [filterStatus, setFilterStatus] = useState<ClientStatus | 'Todos'>('Todos');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -181,6 +181,20 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         return advanceUntilDate && advanceUntilDate > today;
     };
 
+    const handleCancelScheduledChange = async () => {
+        if (!selectedClient || !window.confirm("Tem certeza que deseja cancelar a mudança de plano agendada para este cliente?")) return;
+        setIsSaving(true);
+        try {
+            await cancelScheduledPlanChange(selectedClient.id);
+            showNotification('Mudança de plano cancelada!', 'success');
+            handleCloseModal();
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao cancelar mudança.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6">Gerenciamento de Clientes</h2>
@@ -248,6 +262,7 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                     onSave={handleSaveChanges}
                     onDelete={handleDeleteClient}
                     onMarkPaid={handleMarkPaid}
+                    onCancelScheduledChange={handleCancelScheduledChange}
                     isSaving={isSaving}
                     isDeleting={isDeleting}
                     stockProducts={stockProducts}
@@ -280,7 +295,6 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
                     />
                      <div className="flex items-center gap-2 text-sm text-gray-500">
                          <span className="font-bold">Anexar Imagem:</span> 
-                         {/* Dummy file input to satisfy visual requirement, explicitly stating functionality limitation */}
                          <input type="file" disabled className="text-xs file:py-1 file:px-2 cursor-not-allowed opacity-50" title="Anexe a imagem diretamente no WhatsApp." />
                          <span className="text-xs">(Anexar no App do WhatsApp)</span>
                      </div>
@@ -297,6 +311,7 @@ interface ClientEditModalProps {
     onSave: (clientData: ClientFormData) => void;
     onDelete: () => void;
     onMarkPaid: (clientData: ClientFormData) => void;
+    onCancelScheduledChange: () => void;
     isSaving: boolean;
     isDeleting: boolean;
     stockProducts: StockProduct[];
@@ -305,7 +320,7 @@ interface ClientEditModalProps {
 }
 
 const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
-    const { client, isOpen, onClose, onSave, onDelete, onMarkPaid, isSaving, isDeleting, stockProducts, banks, settings } = props;
+    const { client, isOpen, onClose, onSave, onDelete, onMarkPaid, onCancelScheduledChange, isSaving, isDeleting, stockProducts, banks, settings } = props;
     const [clientData, setClientData] = useState<ClientFormData>(client);
     const [errors, setErrors] = useState<{ dueDate?: string; pixKey?: string; }>({});
     const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
@@ -456,11 +471,7 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
 
     const calculatedFee = useMemo(() => {
         if (!settings) return 0;
-        // Use a temporary client object with updated volume for accurate calculation
         const tempClientForCalc = { ...clientData, poolVolume: volume };
-        // FORCE GLOBAL PRICING: Pass settings.pricing as the override argument (3rd arg).
-        // This ensures that when editing, we see the price based on CURRENT settings,
-        // ignoring any 'customPricing' lock the client might have.
         return calculateClientMonthlyFee(tempClientForCalc, settings, settings.pricing);
     }, [clientData, volume, settings]);
 
@@ -485,6 +496,27 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Editar Cliente: ${client.name}`} size="xl">
             <div className="space-y-4">
+                
+                {/* Alerta de Mudança Agendada */}
+                {client.scheduledPlanChange && (
+                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-md mb-4">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="font-bold text-yellow-800 dark:text-yellow-200 flex items-center">
+                                    <CheckBadgeIcon className="w-5 h-5 mr-2" /> 
+                                    Mudança de Plano Agendada
+                                </p>
+                                <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                                    O plano será alterado para <strong>{client.scheduledPlanChange.newPlan}</strong> (R$ {client.scheduledPlanChange.newPrice.toFixed(2)}) no próximo pagamento.
+                                </p>
+                            </div>
+                            <Button variant="danger" size="sm" onClick={onCancelScheduledChange} isLoading={isSaving}>
+                                Desativar Mudança
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Personal Info */}
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold">Dados Pessoais</legend>
@@ -494,7 +526,7 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                          <Input label="Telefone" name="phone" value={clientData.phone} onChange={handleChange} />
                          <div />
                          <Select 
-                            label="Plano" 
+                            label="Plano Atual" 
                             value={clientData.plan === 'VIP' ? clientData.fidelityPlan?.id : 'Simples'} 
                             onChange={handlePlanChange} 
                             options={planOptions} 
@@ -512,7 +544,6 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                             />
                             <span className="text-sm font-medium">Permitir acesso durante manutenção (VIP/Admin Override)</span>
                         </label>
-                        <p className="text-xs text-gray-500 mt-1 ml-7">Se marcado, este cliente poderá acessar o aplicativo mesmo quando o "Modo Manutenção" estiver ativado nas configurações gerais.</p>
                     </div>
                 </fieldset>
 

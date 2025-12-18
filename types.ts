@@ -422,5 +422,6 @@ export interface AppData {
     respondToPlanChangeRequest: (requestId: string, proposedPrice: number, notes: string) => Promise<void>;
     acceptPlanChange: (requestId: string, price: number, fidelityPlan?: FidelityPlan) => Promise<void>;
     cancelPlanChangeRequest: (requestId: string) => Promise<void>;
+    cancelScheduledPlanChange: (clientId: string) => Promise<void>;
     acknowledgeTerms: (clientId: string) => Promise<void>;
 }

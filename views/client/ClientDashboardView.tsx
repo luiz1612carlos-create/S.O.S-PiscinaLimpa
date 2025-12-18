@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { AuthContextType, AppContextType, Client, ReplenishmentQuote, Order, Settings, CartItem, AdvancePaymentRequest, PoolEvent, RecessPeriod, PendingPriceChange, PlanChangeRequest, FidelityPlan } from '../../types';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -76,7 +77,8 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
 
     const pendingQuote = useMemo(() => {
         if (!clientData || !replenishmentQuotes) return null;
-        return replenishmentQuotes.find(q => q.clientId === clientData.id && q.status === 'sent');
+        // Use client UID to match fixed generator
+        return replenishmentQuotes.find(q => q.clientId === clientData.uid && q.status === 'sent');
     }, [clientData, replenishmentQuotes]);
 
     const mostRecentRequest = useMemo(() => {
@@ -257,7 +259,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     };
     
     const handleAcceptPlanChange = async () => {
-        if (!activePlanChangeRequest || !activePlanChangeRequest.proposedPrice) return;
+        if (!activePlanChangeRequest || !activePlanChangeRequest.proposedPrice || !settings) return;
         
         const selectedOption = upgradeOptions.find(opt => opt.id === selectedUpgradeOptionId);
         if (!selectedOption) return;
@@ -316,9 +318,9 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                 
                 {/* Scheduled Change Notification */}
                 {clientData.scheduledPlanChange && (
-                    <div className="p-4 bg-green-100 border-l-4 border-green-500 text-green-800 rounded-md">
-                        <p className="font-bold flex items-center"><CheckBadgeIcon className="w-5 h-5 mr-2" /> Mudança de Plano Agendada</p>
-                        <p>Seu plano será atualizado para <strong>{clientData.scheduledPlanChange.newPlan}</strong> (R$ {clientData.scheduledPlanChange.newPrice.toFixed(2)}) automaticamente após a confirmação do pagamento atual.</p>
+                    <div className="p-4 bg-green-100 border-l-4 border-green-500 text-green-800 rounded-md shadow-sm">
+                        <p className="font-bold flex items-center text-green-900"><CheckBadgeIcon className="w-5 h-5 mr-2" /> Mudança de Plano Agendada</p>
+                        <p className="text-sm text-green-800 mt-1">Seu plano será atualizado para <strong>{clientData.scheduledPlanChange.newPlan}</strong> (R$ {clientData.scheduledPlanChange.newPrice.toFixed(2)}) automaticamente após a confirmação do pagamento atual.</p>
                     </div>
                 )}
 
@@ -359,7 +361,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     </div>
                 )}
                 
-                {/* Plan Upgrade / Comparison Card - Only if Simple, VIP enabled AND planUpgradeEnabled is TRUE */}
+                {/* Plan Upgrade / Comparison Card - Check both vipPlanEnabled AND planUpgradeEnabled */}
                 {clientData.plan === 'Simples' && settings.features.vipPlanEnabled && settings.features.planUpgradeEnabled && !clientData.scheduledPlanChange && (
                     <Card className="border-2 border-yellow-400 bg-yellow-50 dark:bg-yellow-900/10">
                         <CardContent className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -398,7 +400,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                     showNotification={showNotification}
                 />
 
-                {/* Visit History */}
+                {/* Histórico de Visitas */}
                 <Card data-tour-id="visit-history">
                     <CardHeader data-tour-id="visit-history-header"><h3 className="text-xl font-semibold">Histórico de Visitas</h3></CardHeader>
                     <CardContent className="space-y-3 max-h-96 overflow-y-auto">
@@ -651,7 +653,7 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
                 <Modal
                     isOpen={isTermsModalOpen}
                     onClose={() => setIsTermsModalOpen(false)}
-                    title={`Termos de Serviço - ${currentPlanDetails.title}`}
+                    title={`Termos do Serviço - ${currentPlanDetails.title}`}
                     size="lg"
                     footer={<Button onClick={() => setIsTermsModalOpen(false)}>Fechar</Button>}
                 >
@@ -666,77 +668,132 @@ const ClientDashboardView: React.FC<ClientDashboardViewProps> = ({ authContext, 
     );
 };
 
-// --- Mocked Sub-Components for Completeness ---
+// --- Sub-Components (Consolidated to fix missing definition errors) ---
 
+// FIX: Added missing PriceChangeNotificationCard component.
 const PriceChangeNotificationCard = ({ notification, currentFee, client, settings }: any) => {
-    // Mocking minimal calculation for demo. In real app use calculations.ts
-    const newFee = currentFee; // Placeholder
+    const newFee = calculateClientMonthlyFee(client, settings, notification.newPricing);
+
     return (
-        <div className="p-4 bg-blue-100 border-l-4 border-blue-500 text-blue-800 rounded-md">
-            <h4 className="font-bold flex items-center"><CurrencyDollarIcon className="w-5 h-5 mr-2"/> Atualização de Preço</h4>
-            <p>A partir de {toDate(notification.effectiveDate)?.toLocaleDateString()}, sua mensalidade será reajustada.</p>
+        <div className="p-4 bg-blue-100 border-l-4 border-blue-500 text-blue-800 rounded-md shadow-sm">
+            <div className="flex items-start">
+                <CurrencyDollarIcon className="w-6 h-6 mr-3 mt-0.5 flex-shrink-0" />
+                <div>
+                    <h4 className="font-bold">Comunicado: Atualização de Preços</h4>
+                    <p className="text-sm mt-1">
+                        Informamos que, para manter a qualidade de nossos serviços, sua mensalidade será reajustada para 
+                        <strong> R$ {newFee.toFixed(2)}</strong> a partir de 
+                        <strong> {toDate(notification.effectiveDate)?.toLocaleDateString('pt-BR')}</strong>.
+                    </p>
+                </div>
+            </div>
         </div>
     );
 };
 
+// FIX: Added missing RecessNotificationCard component.
 const RecessNotificationCard = ({ recesses }: { recesses: RecessPeriod[] }) => (
     <div className="space-y-2">
         {recesses.map(r => (
-            <div key={r.id} className="p-4 bg-orange-100 border-l-4 border-orange-500 text-orange-800 rounded-md">
-                <h4 className="font-bold flex items-center"><CalendarDaysIcon className="w-5 h-5 mr-2"/> {r.name}</h4>
-                <p>Estaremos de recesso entre {toDate(r.startDate)?.toLocaleDateString()} e {toDate(r.endDate)?.toLocaleDateString()}.</p>
+            <div key={r.id} className="p-4 bg-orange-100 border-l-4 border-orange-500 text-orange-800 rounded-md shadow-sm">
+                <div className="flex items-start">
+                    <CalendarDaysIcon className="w-6 h-6 mr-3 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <h4 className="font-bold">{r.name}</h4>
+                        <p className="text-sm">
+                            Informamos que estaremos de recesso entre 
+                            <strong> {toDate(r.startDate)?.toLocaleDateString('pt-BR')}</strong> e 
+                            <strong> {toDate(r.endDate)?.toLocaleDateString('pt-BR')}</strong>.
+                        </p>
+                    </div>
+                </div>
             </div>
         ))}
     </div>
 );
 
+// FIX: Added missing ReplenishmentCard component.
 const ReplenishmentCard = ({ quote, client, updateStatus, createOrder, showNotification }: any) => {
     const [loading, setLoading] = useState(false);
+    
     const handleApprove = async () => {
         setLoading(true);
         try {
             await createOrder({
-                clientId: client.id,
+                clientId: client.uid || client.id,
                 clientName: client.name,
                 items: quote.items,
                 total: quote.total,
                 status: 'Pendente'
             });
             await updateStatus(quote.id, 'approved');
-            showNotification("Pedido criado com sucesso!", "success");
+            showNotification("Pedido de reposição criado com sucesso!", "success");
         } catch (e: any) {
-            showNotification(e.message, "error");
+            showNotification(e.message || "Erro ao aprovar reposição.", "error");
         } finally {
             setLoading(false);
         }
     };
+
     return (
-        <Card className="border-l-4 border-green-500">
-            <CardHeader><h3 className="font-bold">Sugestão de Reposição de Produtos</h3></CardHeader>
+        <Card className="border-l-4 border-green-500 shadow-md">
+            <CardHeader className="bg-green-50/50 dark:bg-green-900/10">
+                <div className="flex items-center gap-2">
+                    <SparklesIcon className="w-5 h-5 text-green-600" />
+                    <h3 className="font-bold text-green-800 dark:text-green-300">Sugestão de Reposição</h3>
+                </div>
+            </CardHeader>
             <CardContent>
-                <p>Detectamos que alguns produtos estão acabando. Deseja repor?</p>
-                <ul className="list-disc pl-5 my-2">
-                    {quote.items.map((i: any) => <li key={i.id}>{i.name} (x{i.quantity}) - R$ {i.price}</li>)}
-                </ul>
-                <p className="font-bold">Total: R$ {quote.total.toFixed(2)}</p>
-                <div className="flex gap-2 mt-2">
-                    <Button size="sm" onClick={handleApprove} isLoading={loading}>Aprovar e Pedir</Button>
-                    <Button size="sm" variant="secondary" onClick={() => updateStatus(quote.id, 'rejected')}>Dispensar</Button>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                    Detectamos itens com estoque baixo. Deseja solicitar a reposição agora?
+                </p>
+                <div className="space-y-1 bg-white dark:bg-gray-900/50 p-3 rounded-lg border dark:border-gray-700">
+                    {quote.items.map((item: any) => (
+                        <div key={item.id} className="flex justify-between text-sm">
+                            <span>{item.name} <span className="font-bold">x{item.quantity}</span></span>
+                            <span className="font-semibold">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                        </div>
+                    ))}
+                    <div className="pt-2 mt-2 border-t flex justify-between font-bold text-primary-600">
+                        <span>Total:</span>
+                        <span>R$ {quote.total.toFixed(2)}</span>
+                    </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                    <Button size="sm" onClick={handleApprove} isLoading={loading} className="flex-1">Aprovar e Pedir</Button>
+                    <Button size="sm" variant="secondary" onClick={() => updateStatus(quote.id, 'rejected')} className="flex-1">Dispensar</Button>
                 </div>
             </CardContent>
         </Card>
     );
 };
 
-const RequestStatusCard = ({ request }: any) => (
-    <Card className={request.status === 'rejected' ? 'border-red-500 border-l-4' : 'border-yellow-500 border-l-4'}>
-        <CardContent>
-            <h4 className="font-bold">Status da Solicitação de Adiantamento</h4>
-            <p>Status: {request.status === 'pending' ? 'Em análise' : 'Rejeitado'}</p>
-        </CardContent>
-    </Card>
-);
+// FIX: Added missing RequestStatusCard component.
+const RequestStatusCard = ({ request }: any) => {
+    const isRejected = request.status === 'rejected';
+    
+    return (
+        <Card className={`border-l-4 shadow-md ${isRejected ? 'border-red-500 bg-red-50 dark:bg-red-900/10' : 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10'}`}>
+            <CardContent className="flex items-center justify-between">
+                <div>
+                    <h4 className={`font-bold ${isRejected ? 'text-red-800 dark:text-red-300' : 'text-yellow-800 dark:text-yellow-300'}`}>
+                        {isRejected ? 'Solicitação de Adiantamento Recusada' : 'Adiantamento em Análise'}
+                    </h4>
+                    <p className="text-sm opacity-80">
+                        {isRejected 
+                            ? 'Sua solicitação de adiantamento não foi aprovada.' 
+                            : 'Sua solicitação está sendo analisada pela nossa equipe.'}
+                    </p>
+                </div>
+                <div className={`p-2 rounded-full ${isRejected ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                    {isRejected ? <XMarkIcon className="w-6 h-6" /> : <Spinner size="sm" />}
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
 
+// FIX: Added missing EventSchedulerCard component.
 const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotification }: any) => {
     const [date, setDate] = useState('');
     const [notes, setNotes] = useState('');
@@ -762,7 +819,7 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
             setDate(''); 
             setNotes('');
         } catch (e: any) {
-            showNotification(e.message, "error");
+            showNotification(e.message || "Erro ao agendar evento.", "error");
         } finally {
             setLoading(false);
         }
@@ -770,11 +827,16 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
 
     return (
         <Card>
-            <CardHeader><h3 className="font-bold flex items-center"><CalendarDaysIcon className="w-5 h-5 mr-2"/> Agendar Uso da Piscina</h3></CardHeader>
+            <CardHeader>
+                <div className="flex items-center gap-2">
+                    <CalendarDaysIcon className="w-6 h-6 text-primary-500" />
+                    <h3 className="text-xl font-semibold">Agendar Uso da Piscina</h3>
+                </div>
+            </CardHeader>
             <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-2">
-                    <Input label="Data do Evento" type="date" value={date} onChange={e => setDate(e.target.value)} required />
-                    <Input label="Observações" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex: Churrasco, preciso da piscina limpa de manhã" />
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <Input label="Data do Evento" type="date" value={date} onChange={e => setDate(e.target.value)} required min={new Date().toISOString().split('T')[0]} />
+                    <Input label="Observações" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex: Churrasco, evento..." />
                     <Button type="submit" isLoading={loading} className="w-full">Agendar</Button>
                 </form>
 
@@ -797,23 +859,10 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
                                                 {isConfirmed && <CheckBadgeIcon className="w-4 h-4 text-green-500" />}
                                             </div>
                                             <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isConfirmed ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
-                                                {isConfirmed ? 'Confirmado' : 'Pendente'}
+                                                {isConfirmed ? 'Lido' : 'Pendente'}
                                             </div>
                                         </div>
-                                        {event.notes && <p className="text-xs text-gray-600 dark:text-gray-400 italic mt-1 border-t dark:border-gray-700 pt-1">"{event.notes}"</p>}
-                                        
-                                        {isConfirmed ? (
-                                            <div className="mt-2 flex items-center gap-1.5 p-1.5 bg-green-50 dark:bg-green-900/10 rounded border border-green-100 dark:border-green-900/30">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                                                <p className="text-[11px] text-green-700 dark:text-green-400 font-semibold uppercase">
-                                                    Recebimento confirmado pela administração
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-2 flex items-center">
-                                                <span className="mr-1">●</span> Aguardando visualização da administração
-                                            </p>
-                                        )}
+                                        {event.notes && <p className="text-xs text-gray-600 dark:text-gray-400 italic mt-1">"{event.notes}"</p>}
                                     </div>
                                 );
                             })}
@@ -825,13 +874,14 @@ const EventSchedulerCard = ({ client, poolEvents, createPoolEvent, showNotificat
     );
 };
 
+// FIX: Added missing AdvancePaymentModal component.
 const AdvancePaymentModal = ({ isOpen, onClose, client, settings, monthlyFee, onSubmit, showNotification }: any) => {
-    const [selectedOption, setSelectedOption] = useState<number | null>(null);
+    const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
     
     const handleSubmit = async () => {
-        if (selectedOption === null) return;
-        const option = settings.advancePaymentOptions[selectedOption];
+        if (selectedOptionIdx === null) return;
+        const option = settings.advancePaymentOptions[selectedOptionIdx];
         const originalAmount = monthlyFee * option.months;
         const discountAmount = originalAmount * (option.discountPercent / 100);
         const finalAmount = originalAmount - discountAmount;
@@ -839,7 +889,7 @@ const AdvancePaymentModal = ({ isOpen, onClose, client, settings, monthlyFee, on
         setLoading(true);
         try {
             await onSubmit({
-                clientId: client.uid,
+                clientId: client.uid || client.id,
                 clientName: client.name,
                 months: option.months,
                 discountPercent: option.discountPercent,
@@ -849,7 +899,7 @@ const AdvancePaymentModal = ({ isOpen, onClose, client, settings, monthlyFee, on
             showNotification("Solicitação enviada!", "success");
             onClose();
         } catch (e: any) {
-            showNotification(e.message, "error");
+            showNotification(e.message || "Erro ao enviar solicitação.", "error");
         } finally {
             setLoading(false);
         }
@@ -857,25 +907,34 @@ const AdvancePaymentModal = ({ isOpen, onClose, client, settings, monthlyFee, on
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Adiantamento de Mensalidades">
-            <p className="mb-4">Selecione uma opção para pagar adiantado com desconto:</p>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">Escolha um plano de adiantamento para ganhar descontos especiais:</p>
             <div className="space-y-2">
-                {settings.advancePaymentOptions.map((opt: any, idx: number) => (
-                    <div 
-                        key={idx} 
-                        onClick={() => setSelectedOption(idx)}
-                        className={`p-3 border rounded cursor-pointer ${selectedOption === idx ? 'border-primary-500 bg-primary-50' : 'border-gray-200'}`}
-                    >
-                        <p className="font-bold">{opt.months} Meses - {opt.discountPercent}% OFF</p>
-                        <p>Total: R$ {(monthlyFee * opt.months * (1 - opt.discountPercent/100)).toFixed(2)}</p>
-                    </div>
-                ))}
+                {settings.advancePaymentOptions.map((opt: any, idx: number) => {
+                    const total = monthlyFee * opt.months * (1 - opt.discountPercent / 100);
+                    return (
+                        <div 
+                            key={idx} 
+                            onClick={() => setSelectedOptionIdx(idx)}
+                            className={`p-4 border-2 rounded-lg cursor-pointer transition-all flex justify-between items-center ${selectedOptionIdx === idx ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'}`}
+                        >
+                            <div>
+                                <p className="font-bold">{opt.months} Meses</p>
+                                <span className="text-xs text-green-600 font-bold">{opt.discountPercent}% OFF</span>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xl font-bold text-primary-600">R$ {total.toFixed(2)}</p>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
                 <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button onClick={handleSubmit} isLoading={loading} disabled={selectedOption === null}>Solicitar</Button>
+                <Button onClick={handleSubmit} isLoading={loading} disabled={selectedOptionIdx === null}>Solicitar</Button>
             </div>
         </Modal>
     );
 };
 
+// FIX: Added missing default export.
 export default ClientDashboardView;

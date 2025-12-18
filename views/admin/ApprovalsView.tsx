@@ -19,7 +19,7 @@ const formatAddress = (address?: Address) => {
 };
 
 const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
-    const { budgetQuotes, loading, approveBudgetQuote, rejectBudgetQuote, showNotification, settings, planChangeRequests, respondToPlanChangeRequest, clients } = appContext;
+    const { budgetQuotes, loading, approveBudgetQuote, rejectBudgetQuote, showNotification, settings, planChangeRequests, respondToPlanChangeRequest, cancelPlanChangeRequest, clients } = appContext;
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [approvalBudget, setApprovalBudget] = useState<BudgetQuote | null>(null);
     const [password, setPassword] = useState('');
@@ -74,6 +74,19 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
         }
     };
 
+    const handleRejectPlanRequest = async (requestId: string) => {
+        if (!window.confirm("Tem certeza que deseja recusar este pedido de mudança de plano?")) return;
+        setProcessingId(requestId);
+        try {
+            await cancelPlanChangeRequest(requestId);
+            showNotification('Solicitação de mudança recusada.', 'info');
+        } catch (error: any) {
+            showNotification(error.message || 'Erro ao recusar.', 'error');
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
     const handleAutoCalculateDistance = async () => {
         if (!settings || !approvalBudget) {
             showNotification('Configurações ou dados do cliente incompletos.', 'error');
@@ -110,8 +123,6 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
         let calculatedPrice = 0;
         
         if (client && settings) {
-            // Create a temporary client with VIP plan to calculate base fee (without fidelity discount initially)
-            // Note: calculateClientMonthlyFee relies on client properties like poolVolume, distanceFromHq, etc.
             const tempClient = { ...client, plan: 'VIP' as const, fidelityPlan: undefined };
             calculatedPrice = calculateClientMonthlyFee(tempClient, settings);
         }
@@ -208,10 +219,15 @@ const ApprovalsView: React.FC<ApprovalsViewProps> = ({ appContext }) => {
                                         <div className="text-primary-600 font-bold">Desejado: {request.requestedPlan}</div>
                                     </div>
                                     <p className="text-xs text-gray-400 mt-2">Solicitado em: {new Date(request.createdAt?.seconds * 1000).toLocaleDateString()}</p>
-                                    <Button className="w-full mt-4" onClick={() => handleOpenPlanResponse(request)}>
-                                        Responder com Opções
-                                    </Button>
                                 </CardContent>
+                                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center gap-2">
+                                    <Button variant="danger" size="sm" className="flex-1" onClick={() => handleRejectPlanRequest(request.id)} isLoading={processingId === request.id} disabled={!!processingId}>
+                                        Recusar
+                                    </Button>
+                                    <Button size="sm" className="flex-1" onClick={() => handleOpenPlanResponse(request)} isLoading={processingId === request.id} disabled={!!processingId}>
+                                        Responder
+                                    </Button>
+                                </div>
                             </Card>
                         ))}
                     </div>

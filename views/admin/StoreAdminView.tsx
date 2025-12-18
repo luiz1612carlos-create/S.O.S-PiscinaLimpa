@@ -67,19 +67,18 @@ const ReplenishmentManagement = ({ appContext }: { appContext: AppContextType })
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
-    // Filtra orçamentos já gerados
     const suggestedQuotes = useMemo(() => {
         return replenishmentQuotes.filter(q => q.status === 'suggested');
     }, [replenishmentQuotes]);
 
-    // Análise EM TEMPO REAL de quem tem estoque baixo mas ainda não tem orçamento gerado
     const clientsWithLiveLowStock = useMemo(() => {
         if (!settings) return [];
         const threshold = settings.automation.replenishmentStockThreshold;
+        // Use client UID to match the fixed generator
         const pendingClientIds = new Set(replenishmentQuotes.filter(q => q.status !== 'rejected' && q.status !== 'approved').map(q => q.clientId));
 
         return clients
-            .filter(c => c.clientStatus === 'Ativo' && !pendingClientIds.has(c.id))
+            .filter(c => c.clientStatus === 'Ativo' && !pendingClientIds.has(c.uid || c.id))
             .map(client => {
                 const lowStockItems = client.stock.filter(item => {
                     const limit = item.maxQuantity ? Math.max(threshold, item.maxQuantity * 0.3) : threshold;
@@ -248,7 +247,6 @@ const ReplenishmentManagement = ({ appContext }: { appContext: AppContextType })
         </div>
     );
 };
-
 
 const PRODUCTS_PER_PAGE = 8;
 

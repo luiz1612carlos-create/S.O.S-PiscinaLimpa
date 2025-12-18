@@ -193,7 +193,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         let generatedCount = 0;
 
         for (const client of activeClients) {
-            if (pendingQuotesClientIds.has(client.id)) continue;
+            if (pendingQuotesClientIds.has(client.uid || client.id)) continue;
 
             const lowStockItems = client.stock.filter(item => {
                 const limit = item.maxQuantity ? Math.max(threshold, item.maxQuantity * 0.3) : threshold;
@@ -211,7 +211,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                     p.name.toLowerCase().trim() === lowItem.name.toLowerCase().trim()
                 );
 
-                if (productInfo && productInfo.stock > 0) {
+                if (productInfo) {
                     let quantityToSuggest = 0;
                     
                     if (lowItem.maxQuantity && lowItem.maxQuantity > lowItem.quantity) {
@@ -229,7 +229,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
             if (itemsToReplenish.length > 0) {
                 const newQuote: Omit<ReplenishmentQuote, 'id'> = {
-                    clientId: client.id,
+                    clientId: client.uid || client.id,
                     clientName: client.name,
                     items: itemsToReplenish,
                     total,
@@ -1078,6 +1078,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
+    const cancelScheduledPlanChange = async (clientId: string) => {
+        await db.collection('clients').doc(clientId).update({
+            scheduledPlanChange: firebase.firestore.FieldValue.delete()
+        });
+    };
+
     const acknowledgeTerms = async (clientId: string) => {
         await db.collection('clients').doc(clientId).update({
             lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1104,6 +1110,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         respondToPlanChangeRequest,
         acceptPlanChange,
         cancelPlanChangeRequest,
+        cancelScheduledPlanChange,
         acknowledgeTerms
     };
 };
