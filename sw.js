@@ -1,41 +1,30 @@
-const CACHE_NAME = "piscina-limpa-v28"; 
+
+const CACHE_NAME = "piscina-limpa-v29"; 
 
 const APP_SHELL_FILES = [
   './',
-  'index.html',
-  'index.tsx',
-  'manifest.json',
-  'icons/icon-72.png',
-  'icons/icon-96.png',
-  'icons/icon-128.png',
-  'icons/icon-144.png',
-  'icons/icon-152.png',
-  'icons/icon-192.png',
-  'icons/icon-384.png',
-  'icons/icon-512.png'
+  './index.html',
+  './index.tsx',
+  './manifest.json',
+  './styles.css'
 ];
 
 self.addEventListener("install", event => {
-  console.log(`SW Install: Caching App Shell v${CACHE_NAME.split('-v')[1]}`);
+  console.log(`SW Install: Caching App Shell ${CACHE_NAME}`);
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      console.log("Caching files:", APP_SHELL_FILES);
       return cache.addAll(APP_SHELL_FILES);
-    }).catch(err => {
-      console.error("Failed to cache app shell:", err);
     })
   );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
-  console.log("SW Activate: Cleaning up old caches");
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys.map(key => {
           if (key !== CACHE_NAME) {
-            console.log("Deleting old cache:", key);
             return caches.delete(key);
           }
         })
@@ -48,34 +37,30 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
     const requestUrl = new URL(event.request.url);
 
-    // Bypass Firebase, Google APIs, and other external resources to avoid conflicts.
-    // This prevents the service worker from interfering with critical SDK functionality.
+    // Ignorar requisições para o Firebase e Google APIs
     if (requestUrl.hostname.endsWith('googleapis.com') ||
-        requestUrl.hostname.endsWith('gstatic.com')) {
-        return; // Let the browser handle it without service worker interception.
+        requestUrl.hostname.endsWith('gstatic.com') ||
+        requestUrl.hostname.includes('firebase')) {
+        return;
     }
 
-    // For navigation requests, try network first, then cache, then offline page.
+    // Estratégia para Navegação (Páginas)
     if (event.request.mode === 'navigate') {
         event.respondWith(
             fetch(event.request).catch(() => {
-                return caches.match('index.html');
+                // Se falhar (offline ou erro), retorna o index.html do cache
+                return caches.match('./index.html') || caches.match('index.html');
             })
         );
         return;
     }
 
-    // For all other requests, use a cache-first strategy.
+    // Estratégia Cache-First para outros recursos
     event.respondWith(
         caches.match(event.request).then(response => {
             return response || fetch(event.request).then(fetchResponse => {
-                // Optional: cache new assets dynamically
-                // if (fetchResponse.ok) {
-                //     return caches.open(CACHE_NAME).then(cache => {
-                //         cache.put(event.request, fetchResponse.clone());
-                //         return fetchResponse;
-                //     });
-                // }
+                // Não cacheamos tudo dinamicamente para evitar inflar o storage sem necessidade,
+                // apenas servimos o que vem da rede.
                 return fetchResponse;
             });
         })
