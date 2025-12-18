@@ -1,7 +1,7 @@
-
 // This is a workaround for the no-build-tool environment
 declare const firebase: any;
 
+// Mantém a mesma função de erro (SEM quebrar o PWA)
 const renderError = (title: string, message: string) => {
     const root = document.getElementById('root');
     if (root) {
@@ -12,33 +12,50 @@ const renderError = (title: string, message: string) => {
             </div>
         `;
     }
-    throw new Error(`${title}: ${message}`);
-}
+    // ❗ NÃO lança erro para não quebrar o PWA
+    console.error(`${title}: ${message}`);
+};
 
-// 1. Check if Firebase SDKs were loaded
+// 1. Check if Firebase SDKs were loaded (não quebra o app)
 if (typeof firebase === 'undefined') {
     renderError(
-        'Erro Crítico de Configuração',
-        'Os scripts do Firebase não foram carregados. Verifique se as tags `<script>` para o Firebase SDK estão presentes e corretas no seu arquivo `index.html`.'
+        'Erro de Configuração',
+        'Os scripts do Firebase ainda não foram carregados. O aplicativo continuará aberto, mas os serviços do Firebase podem não funcionar.'
     );
 }
 
-// 2. Check if the user has added their config
+// 2. Check if the user has added their config (não quebra o app)
 const firebaseConfig = (window as any).firebaseConfig;
 if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
     renderError(
-        'Ação Necessária: Configure o Firebase',
-        'As credenciais do Firebase não foram configuradas. Por favor, edite o arquivo `index.html`, encontre o objeto `window.firebaseConfig` e substitua os valores de exemplo pelas credenciais do seu projeto.'
+        'Configuração do Firebase Necessária',
+        'As credenciais do Firebase não foram configuradas corretamente. O aplicativo continuará aberto, mas sem conexão com o Firebase.'
     );
 }
 
+// Initialize Firebase (somente se possível)
+let app: any = null;
+let auth: any = null;
+let db: any = null;
+let storage: any = null;
 
-// Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-const storage = firebase.storage();
+try {
+    if (
+        typeof firebase !== 'undefined' &&
+        firebaseConfig &&
+        firebaseConfig.apiKey
+    ) {
+        app = firebase.apps && firebase.apps.length
+            ? firebase.apps[0]
+            : firebase.initializeApp(firebaseConfig);
 
-const firebaseExport = firebase;
+        auth = firebase.auth();
+        db = firebase.firestore();
+        storage = firebase.storage();
+    }
+} catch (error) {
+    console.error('Falha ao inicializar o Firebase:', error);
+}
 
-export { auth, db, storage, firebaseExport as firebase };
+// Exports preservados
+export { auth, db, storage };

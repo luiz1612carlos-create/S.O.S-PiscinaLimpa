@@ -1,18 +1,17 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR" class="h-full dark">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Piscina Limpa</title>
-    
+
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#1f2937">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Piscina Limpa">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="manifest" href="/manifest.json">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -38,42 +37,44 @@
         }
     </script>
 
-    <!-- Chart.js for Reports -->
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Google Gemini AI (Carregamento Correto para Navegador) -->
+
+    <!-- Google Gemini AI -->
     <script type="module">
-      import { GoogleGenAI } from "https://esm.run/@google/genai";
-      window.GoogleGenAI = GoogleGenAI;
-      // Previne erro de 'process is not defined' no navegador
-      window.process = window.process || { env: { API_KEY: '' } };
+        import { GoogleGenAI } from "https://esm.run/@google/genai";
+        window.GoogleGenAI = GoogleGenAI;
+        window.process = window.process || { env: { API_KEY: '' } };
     </script>
 
-    <link rel="stylesheet" href="styles.css">
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/index.css">
+
+    <!-- Import Map -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.2.1",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+        "react/": "https://aistudiocdn.com/react@^19.2.1/"
+      }
+    }
+    </script>
 </head>
+
 <body class="h-full bg-gray-100 dark:bg-gray-900">
     <div id="root" class="h-full"></div>
 
+    <!-- Firebase Config -->
     <script>
-      // Suas credenciais do Firebase
-      window.firebaseConfig = {
-        apiKey: "AIzaSyC95v0_rz5p1J0exzJNv0WUn57KK9FO7IE",
-        authDomain: "sospiscinalimpa-81979.firebaseapp.com",
-        projectId: "sospiscinalimpa-81979",
-        storageBucket: "sospiscinalimpa-81979.firebasestorage.app",
-        messagingSenderId: "994396714578",
-        appId: "1:994396714578:web:ba00210e30e7f66b71118b"
-      };
+        window.firebaseConfig = {
+            apiKey: "AIzaSyC95v0_rz5p1J0exzJNv0WUn57KK9FO7IE",
+            authDomain: "sospiscinalimpa-81979.firebaseapp.com",
+            projectId: "sospiscinalimpa-81979",
+            storageBucket: "sospiscinalimpa-81979.firebasestorage.app",
+            messagingSenderId: "994396714578",
+            appId: "1:994396714578:web:ba00210e30e7f66b71118b"
+        };
     </script>
 
     <!-- Firebase SDKs -->
@@ -83,21 +84,21 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 
     <!-- Application Entry Point (ÚNICO) -->
-    <script type="module" src="index.tsx"></script>
-    
-    <!-- Service Worker for PWA -->
+    <script type="module" src="/index.tsx"></script>
+
+    <!-- Service Worker -->
     <script>
         if ("serviceWorker" in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register("/sw.js").then(registration => {
-                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                }, err => {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("/sw.js")
+                    .then(reg => {
+                        console.log("ServiceWorker registrado:", reg.scope);
+                    })
+                    .catch(err => {
+                        console.warn("ServiceWorker falhou:", err);
+                    });
             });
         }
     </script>
-
-<script type="module" src="/index.tsx"></script>
 </body>
 </html>
