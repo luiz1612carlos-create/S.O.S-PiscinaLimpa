@@ -720,7 +720,31 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return db.collection('stockProducts').add(product);
     };
 
-    const deleteStockProduct = (productId: string) => db.collection('stockProducts').doc(productId).delete();
+    // FIX: Implement removeStockProductFromAllClients
+    const removeStockProductFromAllClients = async (productId: string): Promise<number> => {
+        const snapshot = await db.collection('clients').get();
+        const batch = db.batch();
+        let count = 0;
+        snapshot.docs.forEach(doc => {
+            const data = doc.data() as Client;
+            if (data.stock && data.stock.some(p => p.productId === productId)) {
+                batch.update(doc.ref, {
+                    stock: data.stock.filter(p => p.productId !== productId)
+                });
+                count++;
+            }
+        });
+        if (count > 0) await batch.commit();
+        return count;
+    };
+
+    // FIX: Updated deleteStockProduct to support cleanup
+    const deleteStockProduct = async (productId: string, cleanupClients?: boolean) => {
+        if (cleanupClients) {
+            await removeStockProductFromAllClients(productId);
+        }
+        return db.collection('stockProducts').doc(productId).delete();
+    };
 
     const saveBank = (bank: Omit<Bank, 'id'> | Bank) => {
         if ('id' in bank) {
@@ -809,6 +833,70 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             status,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+    };
+
+    const triggerReplenishmentAnalysis = async (): Promise<number> => {
+        if (!isUserAdmin || !settings || clients.length === 0 || products.length === 0) {
+            return 0;
+        }
+
+        console.log("Starting enhanced replenishment analysis...");
+        const threshold = settings.automation.replenishmentStockThreshold;
+        const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
+        const pendingQuotesClientIds = new Set(replenishmentQuotes.filter(q => q.status === 'suggested' || q.status === 'sent').map(q => q.clientId));
+        
+        let generatedCount = 0;
+
+        for (const client of activeClients) {
+            if (pendingQuotesClientIds.has(client.uid || client.id)) continue;
+
+            const lowStockItems = client.stock.filter(item => {
+                const limit = item.maxQuantity ? Math.max(threshold, item.maxQuantity * 0.3) : threshold;
+                return item.quantity <= limit;
+            });
+
+            if (lowStockItems.length === 0) continue;
+            
+            const itemsToReplenish: any[] = [];
+            let total = 0;
+
+            for (const lowItem of lowStockItems) {
+                const productInfo = products.find(p => 
+                    p.id === lowItem.productId || 
+                    p.name.toLowerCase().trim() === lowItem.name.toLowerCase().trim()
+                );
+
+                if (productInfo) {
+                    let quantityToSuggest = 0;
+                    
+                    if (lowItem.maxQuantity && lowItem.maxQuantity > lowItem.quantity) {
+                        quantityToSuggest = lowItem.maxQuantity - lowItem.quantity;
+                    } else {
+                        quantityToSuggest = 5;
+                    }
+
+                    if (quantityToSuggest > 0) {
+                        itemsToReplenish.push({ ...productInfo, quantity: quantityToSuggest });
+                        total += productInfo.price * quantityToSuggest;
+                    }
+                }
+            }
+
+            if (itemsToReplenish.length > 0) {
+                const newQuote: Omit<ReplenishmentQuote, 'id'> = {
+                    clientId: client.uid || client.id,
+                    clientName: client.name,
+                    items: itemsToReplenish,
+                    total,
+                    status: 'suggested',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                };
+                await db.collection('replenishmentQuotes').add(newQuote);
+                generatedCount++;
+            }
+        }
+        return generatedCount;
     };
 
     const createAdvancePaymentRequest = (requestData: Omit<AdvancePaymentRequest, 'id'|'status'|'createdAt'|'updatedAt'>) => {
@@ -1070,15 +1158,29 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
+    // FIX: Implement cancelScheduledPlanChange
+    const cancelScheduledPlanChange = async (clientId: string) => {
+        return db.collection('clients').doc(clientId).update({
+            scheduledPlanChange: firebase.firestore.FieldValue.delete()
+        });
+    };
+
+    // FIX: Implement acknowledgeTerms
+    const acknowledgeTerms = async (clientId: string) => {
+        return db.collection('clients').doc(clientId).update({
+            lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    };
+
 
     return {
         clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, planChangeRequests, loading,
         setupCheck, createInitialAdmin, createTechnician,
         isAdvancePlanGloballyAvailable, advancePlanUsage,
         approveBudgetQuote, rejectBudgetQuote, updateClient, deleteClient, markAsPaid, updateClientStock,
-        scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, saveBank, deleteBank,
+        scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, removeStockProductFromAllClients, saveBank, deleteBank,
         updateOrderStatus, updateSettings, schedulePriceChange, createBudgetQuote, createOrder, getClientData,
-        updateReplenishmentQuoteStatus, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
+        updateReplenishmentQuoteStatus, triggerReplenishmentAnalysis, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
         addVisitRecord,
         resetReportsData,
         createPoolEvent,
@@ -1089,6 +1191,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         requestPlanChange,
         respondToPlanChangeRequest,
         acceptPlanChange,
-        cancelPlanChangeRequest
+        cancelPlanChangeRequest,
+        cancelScheduledPlanChange,
+        acknowledgeTerms
     };
 };

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { db, firebase, auth, storage } from '../firebase';
 import {
@@ -143,14 +142,18 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         setLoading(prev => ({ ...prev, [key]: value }));
     };
     
+    // Initial Setup Check
     useEffect(() => {
         const checkAdminExists = async () => {
             try {
                 const adminQuery = await db.collection('users').where('role', '==', 'admin').limit(1).get();
                 setSetupCheck(adminQuery.empty ? 'needed' : 'done');
-            } catch (error) {
-                console.error("Error checking for admin user:", error);
-                setSetupCheck('needed'); 
+            } catch (error: any) {
+                console.warn("Permission restricted or project not initialized:", error.message);
+                // If permission is denied, it usually means rules are set up but we are unauthenticated.
+                // In a fresh project with no rules, it might fail or return empty.
+                // We default to 'done' to allow the login screen to appear, unless we are sure it's needed.
+                setSetupCheck('done'); 
             }
         };
         checkAdminExists();
@@ -286,87 +289,100 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     }, [isUserAdmin, pendingPriceChanges, settings, clients]);
 
+    // Administrative Data Listeners - MUST wait for authentication and role verification
     useEffect(() => {
-        if (!isUserAdmin && !isUserTechnician) return;
+        if (!user || (!isUserAdmin && !isUserTechnician)) return;
 
         const unsubUsers = db.collection('users').where('role', 'in', ['admin', 'technician']).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => doc.data() as UserData);
             setUsers(data);
             setLoadingState('users', false);
-        });
+        }, error => console.error("Users listener error:", error));
         
         const unsubClients = db.collection('clients').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
             setClients(data);
             setLoadingState('clients', false);
-        });
+        }, error => console.error("Clients listener error:", error));
+
         const unsubBudgets = db.collection('pre-budgets').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetQuote));
             setBudgetQuotes(data);
             setLoadingState('budgetQuotes', false);
-        });
-        const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
-            if (doc.exists) {
-                setRoutes(doc.data() as Routes);
-            }
-            setLoadingState('routes', false);
-        });
+        }, error => console.error("Budgets listener error:", error));
+
         const unsubOrders = db.collection('orders').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
             setOrders(data);
             setLoadingState('orders', false);
-        });
+        }, error => console.error("Orders listener error:", error));
+
         const unsubQuotes = db.collection('replenishmentQuotes').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote));
             setReplenishmentQuotes(data);
             setLoadingState('replenishmentQuotes', false);
-        });
+        }, error => console.error("ReplenishmentQuotes listener error:", error));
+
         const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
             setBanks(data);
             setLoadingState('banks', false);
-        });
+        }, error => console.error("Banks listener error:", error));
+
         const unsubTransactions = db.collection('transactions').orderBy('date', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
             setTransactions(data);
             setLoadingState('transactions', false);
-        });
+        }, error => console.error("Transactions listener error:", error));
+
         const unsubAdvanceRequests = db.collection('advancePaymentRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest));
             setAdvancePaymentRequests(data);
             setLoadingState('advancePaymentRequests', false);
-        });
+        }, error => console.error("AdvanceRequests listener error:", error));
+
         const unsubStockProducts = db.collection('stockProducts').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockProduct));
             setStockProducts(data);
             setLoadingState('stockProducts', false);
-        });
+        }, error => console.error("StockProducts listener error:", error));
+
          const unsubPendingChanges = db.collection('pendingPriceChanges').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
             setPendingPriceChanges(data);
             setLoadingState('pendingPriceChanges', false);
-        });
+        }, error => console.error("PendingPriceChanges listener error:", error));
+
         const unsubEvents = db.collection('poolEvents').orderBy('eventDate', 'asc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
             setPoolEvents(data);
             setLoadingState('poolEvents', false);
-        });
+        }, error => console.error("PoolEvents listener error:", error));
+
         const unsubPlanChanges = db.collection('planChangeRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest));
             setPlanChangeRequests(data);
             setLoadingState('planChangeRequests', false);
-        });
+        }, error => console.error("PlanChangeRequests listener error:", error));
 
-
-        return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); unsubEvents(); unsubPlanChanges(); };
-    }, [isUserAdmin, isUserTechnician]);
+        return () => { 
+            unsubUsers(); unsubClients(); unsubBudgets(); unsubOrders(); unsubQuotes(); unsubBanks(); 
+            unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); 
+            unsubEvents(); unsubPlanChanges(); 
+        };
+    }, [user, isUserAdmin, isUserTechnician]);
     
+    // Public/Shared Listeners with Error Handling
     useEffect(() => {
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
             setProducts(data);
             setLoadingState('products', false);
+        }, error => {
+            console.warn("Public Products restricted:", error.message);
+            setLoadingState('products', false);
         });
+
         const unsubSettings = db.collection('settings').doc('main').onSnapshot(doc => {
             if (doc.exists) {
                 const settingsData = doc.data();
@@ -376,15 +392,23 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 setSettings(defaultSettings);
             }
              setLoadingState('settings', false);
-        });
-        
-        const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
-            setBanks(data);
-            setLoadingState('banks', false);
+        }, error => {
+            console.warn("Public Settings restricted:", error.message);
+            setSettings(defaultSettings);
+            setLoadingState('settings', false);
         });
 
-        return () => { unsubProducts(); unsubSettings(); unsubBanks(); };
+        const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
+            if (doc.exists) {
+                setRoutes(doc.data() as Routes);
+            }
+            setLoadingState('routes', false);
+        }, error => {
+            console.warn("Public Routes restricted:", error.message);
+            setLoadingState('routes', false);
+        });
+
+        return () => { unsubProducts(); unsubSettings(); unsubRoutes(); };
     }, []);
 
     useEffect(() => {
@@ -442,17 +466,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setLoadingState('poolEvents', false);
         });
         
-        const unsubPendingChanges = db.collection('pendingPriceChanges')
-            .where('status', '==', 'pending')
-            .onSnapshot(snapshot => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
-                setPendingPriceChanges(data);
-                setLoadingState('pendingPriceChanges', false);
-            }, (error: Error) => {
-                 console.error("Error fetching pending price changes for client:", error);
-                 setLoadingState('pendingPriceChanges', false);
-            });
-            
         const unsubPlanChanges = db.collection('planChangeRequests').where('clientId', '==', user.uid).onSnapshot(snapshot => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest));
             setPlanChangeRequests(data);
@@ -462,7 +475,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setLoadingState('planChangeRequests', false);
         });
 
-        return () => { unsubClient(); unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPendingChanges(); unsubPlanChanges(); };
+        return () => { unsubClient(); unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPlanChanges(); };
     }, [user, userData]);
 
     const createInitialAdmin = async (name: string, email: string, pass: string) => {
@@ -653,6 +666,8 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         if (!client) return;
         await db.collection('routes').doc('main').set({
             [dayKey]: {
+                day: dayKey,
+                isRouteActive: false,
                 clients: firebase.firestore.FieldValue.arrayUnion(client)
             }
         }, { merge: true });
@@ -708,26 +723,30 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return db.collection('stockProducts').add(product);
     };
 
-    const deleteStockProduct = async (productId: string, cleanupClients = false) => {
+    // FIX: Implement removeStockProductFromAllClients
+    const removeStockProductFromAllClients = async (productId: string): Promise<number> => {
+        const snapshot = await db.collection('clients').get();
+        const batch = db.batch();
+        let count = 0;
+        snapshot.docs.forEach(doc => {
+            const data = doc.data() as Client;
+            if (data.stock && data.stock.some(p => p.productId === productId)) {
+                batch.update(doc.ref, {
+                    stock: data.stock.filter(p => p.productId !== productId)
+                });
+                count++;
+            }
+        });
+        if (count > 0) await batch.commit();
+        return count;
+    };
+
+    // FIX: Updated deleteStockProduct to handle cleanup
+    const deleteStockProduct = async (productId: string, cleanupClients?: boolean) => {
         if (cleanupClients) {
             await removeStockProductFromAllClients(productId);
         }
         return db.collection('stockProducts').doc(productId).delete();
-    };
-
-    const removeStockProductFromAllClients = async (productId: string): Promise<number> => {
-        const clientsWithProduct = clients.filter(c => c.stock.some(s => s.productId === productId));
-        if (clientsWithProduct.length === 0) return 0;
-
-        const batch = db.batch();
-        clientsWithProduct.forEach(client => {
-            const updatedStock = client.stock.filter(s => s.productId !== productId);
-            const clientRef = db.collection('clients').doc(client.id);
-            batch.update(clientRef, { stock: updatedStock });
-        });
-
-        await batch.commit();
-        return clientsWithProduct.length;
     };
 
     const saveBank = (bank: Omit<Bank, 'id'> | Bank) => {
@@ -1059,7 +1078,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 scheduledPlanChange: {
                     newPlan: request.requestedPlan,
                     newPrice: price,
-                    effectiveDate: firebase.firestore.Timestamp.fromDate(new Date())
+                    effectiveDate: firebase.firestore.FieldValue.serverTimestamp()
                 }
             };
             if (fidelityPlan) updateData.scheduledPlanChange.fidelityPlan = fidelityPlan;
@@ -1078,14 +1097,16 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
+    // FIX: Implement cancelScheduledPlanChange
     const cancelScheduledPlanChange = async (clientId: string) => {
-        await db.collection('clients').doc(clientId).update({
+        return db.collection('clients').doc(clientId).update({
             scheduledPlanChange: firebase.firestore.FieldValue.delete()
         });
     };
 
+    // FIX: Implement acknowledgeTerms
     const acknowledgeTerms = async (clientId: string) => {
-        await db.collection('clients').doc(clientId).update({
+        return db.collection('clients').doc(clientId).update({
             lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp()
         });
     };

@@ -1,4 +1,3 @@
-
 export interface UserData {
     uid: string;
     email: string;
@@ -122,6 +121,7 @@ export interface Client {
     customPricing?: PricingSettings; // Allows locking pricing for specific clients (e.g. VIPs)
     distanceFromHq?: number; // Distance from headquarters in KM
     scheduledPlanChange?: ScheduledPlanChange; // New field for plan upgrades waiting for next cycle
+    lastAcceptedTermsAt?: any;
 }
 
 export interface BudgetQuote {
@@ -265,6 +265,7 @@ export interface Settings {
     pixKeyRecipient?: string;
     whatsappMessageTemplate?: string;
     announcementMessageTemplate?: string; // New field for the announcement
+    termsUpdatedAt?: any;
     pricing: {
         perKm: number;
         wellWaterFee: number;
@@ -291,7 +292,6 @@ export interface Settings {
     fidelityPlans: FidelityPlan[];
     features: {
         vipPlanEnabled: boolean;
-        // FIX: Added missing planUpgradeEnabled property to fix error in useAppData.ts
         planUpgradeEnabled: boolean; // New field to control upgrade visibility
         vipPlanDisabledMessage: string;
         vipUpgradeTitle?: string;
@@ -394,8 +394,9 @@ export interface AppData {
     saveProduct: (product: Omit<Product, 'id'> | Product, imageFile?: File) => Promise<void>;
     deleteProduct: (productId: string) => Promise<void>;
     saveStockProduct: (product: Omit<StockProduct, 'id'> | StockProduct) => Promise<void>;
-    deleteStockProduct: (productId: string) => Promise<void>;
-    saveBank: (bank: Omit<Bank, 'id'> | Bank) => Promise<void>;
+    deleteStockProduct: (productId: string, cleanupClients?: boolean) => Promise<void>;
+    removeStockProductFromAllClients: (productId: string) => Promise<number>;
+    saveBank: ( bank: Omit<Bank, 'id'> | Bank) => Promise<void>;
     deleteBank: (bankId: string) => Promise<void>;
     updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
     updateSettings: (newSettings: Partial<Settings>, logoFile?: File, removeLogo?: boolean, onProgress?: (progress: number) => void) => Promise<void>;
@@ -406,6 +407,7 @@ export interface AppData {
     createInitialAdmin: (name: string, email: string, pass: string) => Promise<void>;
     createTechnician: (name: string, email: string, pass: string) => Promise<void>;
     updateReplenishmentQuoteStatus: (quoteId: string, status: ReplenishmentQuoteStatus) => Promise<void>;
+    triggerReplenishmentAnalysis: () => Promise<number>;
     createAdvancePaymentRequest: (request: Omit<AdvancePaymentRequest, 'id' | 'status' | 'createdAt' | 'updatedAt'>) => Promise<void>;
     approveAdvancePaymentRequest: (requestId: string) => Promise<void>;
     rejectAdvancePaymentRequest: (requestId: string) => Promise<void>;
@@ -420,4 +422,6 @@ export interface AppData {
     respondToPlanChangeRequest: (requestId: string, proposedPrice: number, notes: string) => Promise<void>;
     acceptPlanChange: (requestId: string, price: number, fidelityPlan?: FidelityPlan) => Promise<void>;
     cancelPlanChangeRequest: (requestId: string) => Promise<void>;
+    cancelScheduledPlanChange: (clientId: string) => Promise<void>;
+    acknowledgeTerms: (clientId: string) => Promise<void>;
 }
