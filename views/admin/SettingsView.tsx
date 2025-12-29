@@ -9,7 +9,7 @@ import { TrashIcon, EditIcon, PlusIcon, CalendarDaysIcon, ChartBarIcon, Currency
 import { Modal } from '../../components/Modal';
 import { Select } from '../../components/Select';
 import { calculateClientMonthlyFee } from '../../utils/calculations';
-import { firebase } from '../../firebase'; // Import firebase for timestamp
+import { firebase } from '../../firebase';
 
 // This is a workaround for the no-build-tool environment
 declare const html2canvas: any;
@@ -184,10 +184,9 @@ const UserManager = ({ appContext }: { appContext: AppContextType }) => {
         try {
             await createTechnician(name, email, password);
             showNotification('Técnico criado com sucesso! Você será desconectado.', 'success');
-            // No need to close modal, the page will reload to the login screen.
         } catch (error: any) {
             showNotification(error.message || 'Erro ao criar técnico.', 'error');
-            setIsSaving(false); // Only set saving to false on error
+            setIsSaving(false);
         }
     };
 
@@ -228,7 +227,6 @@ const UserManager = ({ appContext }: { appContext: AppContextType }) => {
                 footer={
                     <>
                         <Button variant="secondary" onClick={handleCloseModal} disabled={isSaving}>Cancelar</Button>
-                        {/* The form submission is handled by the form's onSubmit */}
                     </>
                 }
             >
@@ -470,13 +468,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isSavingPassword, setIsSavingPassword] = useState(false);
 
-    // State for price change confirmation modal
     const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState(false);
     const [affectedClientsPreview, setAffectedClientsPreview] = useState<AffectedClientPreview[]>([]);
     const [effectiveDate, setEffectiveDate] = useState<Date | null>(null);
     const [viewAffectedClientsModalOpen, setViewAffectedClientsModalOpen] = useState(false);
 
-    // Impact Analysis State
     const [isImpactModalOpen, setIsImpactModalOpen] = useState(false);
 
     const pendingChange = pendingPriceChanges.find(c => c.status === 'pending');
@@ -484,13 +480,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     useEffect(() => {
         if (settings) {
             const initialSettings = JSON.parse(JSON.stringify(settings));
-            
-            // If there's a pending change, show those pricing values instead of current ones in the inputs
-            // This is visually helpful since the inputs are blocked, so users can see what's pending.
             if (pendingChange) {
                 initialSettings.pricing = JSON.parse(JSON.stringify(pendingChange.newPricing));
             }
-            
             setLocalSettings(initialSettings);
             setLogoPreview(settings.logoUrl || null);
         }
@@ -500,14 +492,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         if (!settings || !localSettings) return [];
         
         return clients
-            .filter(c => c.clientStatus === 'Ativo' && !c.customPricing && c.plan === 'Simples') // Only calculate impact for standard plans without locks
+            .filter(c => c.clientStatus === 'Ativo' && !c.customPricing && c.plan === 'Simples')
             .map(client => {
                 const currentFee = calculateClientMonthlyFee(client, settings);
-                // Use the localSettings (which contains the new drafted pricing) to calculate the new fee
                 const newFee = calculateClientMonthlyFee(client, localSettings);
-                
                 const diff = newFee - currentFee;
-                
                 return {
                     id: client.id,
                     name: client.name,
@@ -517,9 +506,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     percent: currentFee > 0 ? (diff / currentFee) * 100 : 0
                 };
             })
-            // Only show clients where the price actually changes (tolerance for float errors)
             .filter(item => Math.abs(item.diff) > 0.01)
-            .sort((a, b) => b.diff - a.diff); // Sort by highest increase first
+            .sort((a, b) => b.diff - a.diff);
     }, [clients, settings, localSettings]);
 
     const totalRevenueDiff = useMemo(() => {
@@ -540,7 +528,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         
         setLocalSettings(prev => {
             if (!prev) return null;
-            const newState = JSON.parse(JSON.stringify(prev)); // Deep copy
+            const newState = JSON.parse(JSON.stringify(prev));
             if (section) {
                 const sectionKey = section as keyof Settings;
                  if (!newState[sectionKey]) {
@@ -606,39 +594,38 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
         setLocalSettings(prev => ({...prev!, pricing: {...prev!.pricing, volumeTiers: newTiers}}));
     };
     
-    const handleFidelityPlanChange = (index: number, field: keyof Omit<FidelityPlan, 'id'>, value: number) => {
-        const newPlans = [...localSettings.fidelityPlans];
-        newPlans[index][field] = value;
-        setLocalSettings(prev => ({ ...prev!, fidelityPlans: newPlans }));
-    };
-
-    const addFidelityPlan = () => {
-        const newPlan = { id: Date.now().toString(), months: 0, discountPercent: 0 };
-        const newPlans = [...localSettings.fidelityPlans, newPlan];
-        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
-    };
-
-    const removeFidelityPlan = (index: number) => {
-        const newPlans = localSettings.fidelityPlans.filter((_, i) => i !== index);
-        setLocalSettings((prev: any) => ({ ...prev!, fidelityPlans: newPlans }));
-    };
-
+    // FIX: Added missing handleAdvanceOptionChange function
     const handleAdvanceOptionChange = (index: number, field: keyof AdvancePaymentOption, value: number) => {
-        const newOptions = [...localSettings.advancePaymentOptions];
-        newOptions[index][field] = value;
-        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
+        setLocalSettings(prev => {
+            if (!prev) return null;
+            const newOptions = [...prev.advancePaymentOptions];
+            newOptions[index] = { ...newOptions[index], [field]: value };
+            return { ...prev, advancePaymentOptions: newOptions };
+        });
     };
 
+    // FIX: Added missing addAdvanceOption function
     const addAdvanceOption = () => {
-        const newOptions = [...localSettings.advancePaymentOptions, { months: 0, discountPercent: 0 }];
-        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
+        setLocalSettings(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                advancePaymentOptions: [...prev.advancePaymentOptions, { months: 0, discountPercent: 0 }]
+            };
+        });
     };
 
+    // FIX: Added missing removeAdvanceOption function
     const removeAdvanceOption = (index: number) => {
-        const newOptions = localSettings.advancePaymentOptions.filter((_, i) => i !== index);
-        setLocalSettings(prev => ({ ...prev!, advancePaymentOptions: newOptions }));
+        setLocalSettings(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                advancePaymentOptions: prev.advancePaymentOptions.filter((_, i) => i !== index)
+            };
+        });
     };
-    
+
     const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -666,23 +653,23 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     };
 
     const handleSave = async () => {
-        if (!settings) return;
+        if (!settings || !localSettings) return;
         setIsSaving(true);
         setUploadProgress(logoFile ? 0 : null);
         try {
             const hasPriceChanged = JSON.stringify(localSettings.pricing) !== JSON.stringify(settings.pricing);
-            
-            // Check if plan terms changed to update version timestamp
             const hasPlansChanged = JSON.stringify(localSettings.plans) !== JSON.stringify(settings.plans);
 
-            const { pricing, ...otherSettings } = localSettings;
+            // Importante: Mantemos o localSettings completo (incluindo pricing) para atualizar o documento principal.
+            // Isso garante que a calculadora pública (PreBudgetView) use as faixas mais recentes.
+            const settingsToSave = { ...localSettings };
             
             if (hasPlansChanged) {
-                otherSettings.termsUpdatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                settingsToSave.termsUpdatedAt = firebase.firestore.FieldValue.serverTimestamp();
             }
 
             await updateSettings(
-                otherSettings, 
+                settingsToSave, 
                 logoFile || undefined, 
                 shouldRemoveLogo,
                 (progress) => setUploadProgress(progress)
@@ -692,14 +679,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
             setShouldRemoveLogo(false);
 
             if (hasPriceChanged) {
-                // REMOVED BLOCKING LOGIC HERE
-                // We now allow new price changes even if there is a pending one.
-                // The newest scheduled change will simply be added to the queue (or handled by backend logic).
-
                 const thirtyDaysFromNow = new Date();
                 thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-                // Use the impacted clients from our real-time calculation
                 const affected = impactAnalysis.map(c => ({ id: c.id, name: c.name }));
                 
                 setAffectedClientsPreview(affected);
@@ -719,7 +700,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
     const handleConfirmPriceChange = async () => {
         setIsSaving(true);
         try {
-            await schedulePriceChange(localSettings.pricing, affectedClientsPreview);
+            await schedulePriceChange(localSettings!.pricing, affectedClientsPreview);
             showNotification('Alteração de preço agendada com sucesso!', 'success');
             setIsPriceChangeModalOpen(false);
         } catch (error: any) {
@@ -793,7 +774,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
             )}
 
             <div className="space-y-8">
-                {/* Company Info */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Identidade Visual e Informações</h3>
                     <div className="grid md:grid-cols-2 gap-4">
@@ -921,7 +901,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     </fieldset>
                 </div>
                 
-                 {/* Mensagens e Notificações */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Configuração de Mensagens</h3>
                     <div className="space-y-6">
@@ -947,10 +926,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                 <p>Variáveis disponíveis para substituição:</p>
                                 <ul className="list-disc list-inside mt-1">
                                     <li><strong>{`{CLIENTE}`}</strong>: Nome do Cliente</li>
-                                    <li><strong>{`{VALOR}`}</strong>: Valor da mensalidade (ex: 150,00)</li>
-                                    <li><strong>{`{VENCIMENTO}`}</strong>: Data de vencimento (dd/mm/aaaa)</li>
-                                    <li><strong>{`{PIX}`}</strong>: Chave PIX (usa a do cliente, do banco do cliente ou a da empresa)</li>
-                                    <li><strong>{`{DESTINATARIO}`}</strong>: Nome do beneficiário da chave PIX</li>
+                                    <li><strong>{`{VALOR}`}</strong>: Valor da mensalidade</li>
+                                    <li><strong>{`{VENCIMENTO}`}</strong>: Data de vencimento</li>
+                                    <li><strong>{`{PIX}`}</strong>: Chave PIX</li>
+                                    <li><strong>{`{DESTINATARIO}`}</strong>: Nome do beneficiário</li>
                                 </ul>
                             </div>
                         </div>
@@ -974,23 +953,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                 <ul className="list-disc list-inside mt-1">
                                     <li><strong>{`{CLIENTE}`}</strong>: Nome do Cliente</li>
                                     <li><strong>{`{LOGIN}`}</strong>: E-mail do cliente</li>
-                                    <li><strong>{`{SENHA}`}</strong>: (Substituído por texto fixo, pois não é possível recuperar senhas)</li>
+                                    <li><strong>{`{SENHA}`}</strong>: Senha fictícia</li>
                                 </ul>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Bank Management */}
                 <BankManager appContext={appContext} />
-
-                {/* Recess Management */}
                 <RecessManager appContext={appContext} />
-
-                {/* User Management */}
                 <UserManager appContext={appContext} />
 
-                 {/* Automations */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Automações</h3>
                     <div className="grid md:grid-cols-2 gap-4">
@@ -1004,7 +977,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     </div>
                 </div>
 
-                {/* Pricing */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow relative">
                     <fieldset>
                         <div className="flex justify-between items-center mb-4">
@@ -1024,9 +996,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                             <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded flex justify-between items-center">
                                 <div>
                                     <p className="text-sm font-bold text-blue-800 dark:text-blue-200">Simulação de Impacto em Tempo Real</p>
-                                    <p className="text-xs text-blue-700 dark:text-blue-300">
-                                        Com estas alterações, o faturamento mensal variará em:
-                                    </p>
+                                    <p className="text-xs text-blue-700 dark:text-blue-300">Com estas alterações, o faturamento mensal variará em:</p>
                                 </div>
                                 <div className={`text-lg font-bold ${totalRevenueDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                     {totalRevenueDiff >= 0 ? '+' : ''}R$ {totalRevenueDiff.toFixed(2)}
@@ -1035,7 +1005,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                         )}
 
                         <p className="text-sm text-yellow-600 dark:text-yellow-400 mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-md">
-                            <strong>Atenção:</strong> Alterar estes valores agendará uma mudança de preço para os clientes aplicáveis (Plano Simples sem travas), que entrará em vigor em 30 dias.
+                            <strong>Atenção:</strong> Alterar as faixas de volume atualizará a calculadora de novos orçamentos imediatamente. Para clientes ativos (Plano Simples), a mudança de preço será agendada para entrar em vigor em 30 dias.
                         </p>
                         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                             <Input label="Valor por KM" name="perKm" type="number" value={localSettings.pricing.perKm} onChange={(e) => handleSimpleChange(e, 'pricing')} />
@@ -1059,46 +1029,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                     </fieldset>
                 </div>
 
-                {/* Plans */}
                 <div className="grid md:grid-cols-2 gap-8">
                     <PlanEditor title="Plano Simples" planKey="simple" plan={localSettings.plans.simple} setLocalSettings={setLocalSettings} />
                     <FidelityPlanEditor localSettings={localSettings} setLocalSettings={setLocalSettings} />
                 </div>
 
-                {/* Features */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Gerenciamento de Funcionalidades</h3>
                     <div className="space-y-4">
                         <ToggleSwitch label="Ativar Plano VIP" enabled={localSettings.features.vipPlanEnabled} onChange={() => handleToggle('vipPlanEnabled')} />
                         {!localSettings.features.vipPlanEnabled && (
                             <div className="pl-8 mt-2">
-                                <Input 
-                                    label="Mensagem para Plano VIP desativado" 
-                                    name="vipPlanDisabledMessage" 
-                                    value={localSettings.features.vipPlanDisabledMessage || ''} 
-                                    onChange={(e) => handleSimpleChange(e, 'features')} 
-                                />
+                                <Input label="Mensagem para Plano VIP desativado" name="vipPlanDisabledMessage" value={localSettings.features.vipPlanDisabledMessage || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
                             </div>
                         )}
                         {localSettings.features.vipPlanEnabled && (
                             <div className="pl-8 mt-2 space-y-2">
-                                <ToggleSwitch 
-                                    label="Permitir Solicitação de Upgrade de Plano pelo Cliente" 
-                                    enabled={localSettings.features.planUpgradeEnabled} 
-                                    onChange={() => handleToggle('planUpgradeEnabled')} 
-                                />
-                                 <Input 
-                                    label="Título do Banner de Upgrade (Dashboard Cliente)" 
-                                    name="vipUpgradeTitle" 
-                                    value={localSettings.features.vipUpgradeTitle || ''} 
-                                    onChange={(e) => handleSimpleChange(e, 'features')} 
-                                />
-                                <Input 
-                                    label="Descrição do Banner de Upgrade" 
-                                    name="vipUpgradeDescription" 
-                                    value={localSettings.features.vipUpgradeDescription || ''} 
-                                    onChange={(e) => handleSimpleChange(e, 'features')} 
-                                />
+                                <ToggleSwitch label="Permitir Solicitação de Upgrade de Plano pelo Cliente" enabled={localSettings.features.planUpgradeEnabled} onChange={() => handleToggle('planUpgradeEnabled')} />
+                                 <Input label="Título do Banner de Upgrade" name="vipUpgradeTitle" value={localSettings.features.vipUpgradeTitle || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
+                                <Input label="Descrição do Banner de Upgrade" name="vipUpgradeDescription" value={localSettings.features.vipUpgradeDescription || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
                             </div>
                         )}
                         <ToggleSwitch label="Ativar Loja para Clientes" enabled={localSettings.features.storeEnabled} onChange={() => handleToggle('storeEnabled')} />
@@ -1108,36 +1057,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                             <div className="pl-8 mt-4 space-y-2">
                                 <div className="space-y-4 pt-4 border-t dark:border-gray-700">
                                     <h4 className="font-semibold">Textos do Banner Promocional</h4>
-                                     <Input 
-                                        label="Título do Banner" 
-                                        name="advancePaymentTitle" 
-                                        value={localSettings.features.advancePaymentTitle || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
-                                     <Input 
-                                        label="Subtítulo (Plano VIP)" 
-                                        name="advancePaymentSubtitleVIP" 
-                                        value={localSettings.features.advancePaymentSubtitleVIP || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
-                                     <Input 
-                                        label="Subtítulo (Plano Simples)" 
-                                        name="advancePaymentSubtitleSimple" 
-                                        value={localSettings.features.advancePaymentSubtitleSimple || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
+                                     <Input label="Título do Banner" name="advancePaymentTitle" value={localSettings.features.advancePaymentTitle || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
+                                     <Input label="Subtítulo (Plano VIP)" name="advancePaymentSubtitleVIP" value={localSettings.features.advancePaymentSubtitleVIP || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
+                                     <Input label="Subtítulo (Plano Simples)" name="advancePaymentSubtitleSimple" value={localSettings.features.advancePaymentSubtitleSimple || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
                                 </div>
                                 <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md text-sm mt-6">
                                     <p><strong>Status da Adesão:</strong></p>
                                     <p>{advancePlanUsage.count} de {activeClientsCount} clientes ativos aderiram ({advancePlanUsage.percentage.toFixed(2)}%).</p>
-                                    {advancePlanUsage.percentage >= 10 && (
-                                        <p className="font-bold text-yellow-600 dark:text-yellow-400 mt-2">
-                                            O limite de adesão foi atingido. O plano de adiantamento está indisponível para novas solicitações.
-                                        </p>
-                                    )}
                                 </div>
                                 <div className="space-y-4 pt-4 border-t dark:border-gray-700">
-                                    <h4 className="font-semibold">Opções de Adiantamento com Desconto</h4>
+                                    <h4 className="font-semibold">Opções de Adiantamento</h4>
                                     {localSettings.advancePaymentOptions.map((option, index) => (
                                         <div key={index} className="flex items-center gap-2">
                                             <span>Pagar</span>
@@ -1154,26 +1083,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                         )}
 
                         <div className="pt-4 mt-4 border-t dark:border-gray-700">
-                             <ToggleSwitch 
-                                label="Modo Manutenção (Bloquear Acesso de Clientes)" 
-                                enabled={localSettings.features.maintenanceModeEnabled} 
-                                onChange={() => handleToggle('maintenanceModeEnabled')} 
-                            />
+                             <ToggleSwitch label="Modo Manutenção" enabled={localSettings.features.maintenanceModeEnabled} onChange={() => handleToggle('maintenanceModeEnabled')} />
                             {localSettings.features.maintenanceModeEnabled && (
                                 <div className="pl-8 mt-2">
-                                    <Input 
-                                        label="Mensagem de Manutenção" 
-                                        name="maintenanceMessage" 
-                                        value={localSettings.features.maintenanceMessage || ''} 
-                                        onChange={(e) => handleSimpleChange(e, 'features')} 
-                                    />
+                                    <Input label="Mensagem de Manutenção" name="maintenanceMessage" value={localSettings.features.maintenanceMessage || ''} onChange={(e) => handleSimpleChange(e, 'features')} />
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
 
-                {/* My Account */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Minha Conta</h3>
                      <form onSubmit={handlePasswordChange} className="space-y-4">
@@ -1200,9 +1119,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                         </>
                     }
                 >
-                    <p>Você está prestes a agendar uma alteração nos preços.</p>
+                    <p>Você está prestes a agendar uma alteração nos preços para clientes existentes.</p>
                     <p className="font-semibold my-2">Os novos valores entrarão em vigor em <strong>{effectiveDate?.toLocaleDateString('pt-BR')}</strong>.</p>
-                    <p>A alteração afetará os seguintes <strong>{affectedClientsPreview.length}</strong> clientes:</p>
+                    <p>A alteração afetará os seguintes <strong>{affectedClientsPreview.length}</strong> clientes do Plano Simples:</p>
                     <div className="mt-2 p-2 border rounded-md max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-700">
                         {affectedClientsPreview.length > 0 ? (
                             <ul className="list-disc list-inside">
@@ -1212,9 +1131,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                             <p>Nenhum cliente será afetado por esta mudança no momento.</p>
                         )}
                     </div>
-                    <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                        Apenas clientes do Plano Simples serão afetados pelo reajuste e notificados. Clientes VIP (Fidelidade) não sofrerão alterações.
-                    </p>
                 </Modal>
             )}
 
@@ -1222,11 +1138,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                 <Modal
                     isOpen={viewAffectedClientsModalOpen}
                     onClose={() => setViewAffectedClientsModalOpen(false)}
-                    title="Clientes Afetados pela Mudança Agendada"
+                    title="Clientes Afetados"
                     size="lg"
                     footer={<Button onClick={() => setViewAffectedClientsModalOpen(false)}>Fechar</Button>}
                 >
-                    <p>A alteração de preço agendada para <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong> afetará os seguintes clientes:</p>
+                    <p>Clientes afetados pela mudança de <strong>{toDate(pendingChange.effectiveDate)?.toLocaleDateString('pt-BR')}</strong>:</p>
                     <div className="mt-2 p-2 border rounded-md max-h-60 overflow-y-auto bg-gray-50 dark:bg-gray-700">
                         <ul className="list-disc list-inside">
                             {pendingChange.affectedClients.map(c => <li key={c.id}>{c.name}</li>)}
@@ -1277,19 +1193,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ appContext, authContext }) 
                                         </td>
                                     </tr>
                                 ))}
-                                {impactAnalysis.length === 0 && (
-                                    <tr>
-                                        <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                                            Nenhum cliente sofrerá alteração de preço com as configurações atuais.
-                                        </td>
-                                    </tr>
-                                )}
                             </tbody>
                         </table>
                     </div>
                 </Modal>
             )}
-
         </div>
     );
 };

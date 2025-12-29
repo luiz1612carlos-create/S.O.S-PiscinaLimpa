@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
+import { Select } from '../../components/Select';
 import { AppContextType, PlanType, Settings, FidelityPlan, BudgetQuote, Client } from '../../types';
 import { Spinner } from '../../components/Spinner';
 import { normalizeDimension, calculateDrivingDistance, calculateClientMonthlyFee } from '../../utils/calculations';
@@ -25,8 +26,8 @@ const preBudgetTourSteps: TourStep[] = [
         selector: '[data-tour-id="dimensions"] legend',
         highlightSelector: '[data-tour-id="dimensions"]',
         position: 'bottom',
-        title: '1. Dimensões da Piscina',
-        content: 'Comece inserindo as medidas da sua piscina em metros. Use vírgula ou ponto para casas decimais (ex: 1,4 ou 1.4). O volume será calculado automaticamente.',
+        title: '1. Volume da Piscina',
+        content: 'Selecione a faixa de volume que mais se aproxima da sua piscina. O valor é calculado automaticamente com base nessa escolha.',
     },
     {
         selector: '[data-tour-id="options"] legend',
@@ -78,10 +79,8 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
         city: '',
         state: '',
         zip: '',
-        width: '',
-        length: '',
-        depth: '',
     });
+    const [selectedTierIndex, setSelectedTierIndex] = useState<string>('');
     const [options, setOptions] = useState({
         hasWellWater: false,
         isPartyPool: false,
@@ -110,6 +109,23 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     };
 
     const selectedPlanType: PlanType = selectedPlanIdentifier === 'simples' ? 'Simples' : 'VIP';
+    
+    // Filtered tiers: Only those above 3000 liters
+    const filteredTiers = useMemo(() => {
+        if (!settings) return [];
+        return settings.pricing.volumeTiers.filter(tier => tier.max > 3000);
+    }, [settings]);
+
+    const tierOptions = useMemo(() => {
+        return [
+            { value: '', label: 'Selecione o volume da sua piscina...' },
+            ...filteredTiers.map((tier, index) => ({
+                value: index.toString(),
+                label: `De ${tier.min.toLocaleString('pt-BR')} até ${tier.max.toLocaleString('pt-BR')} Litros`
+            }))
+        ];
+    }, [filteredTiers]);
+
     const selectedFidelityPlan = useMemo(() => {
         if (selectedPlanType === 'VIP' && settings) {
             return settings.fidelityPlans.find(fp => fp.id === selectedPlanIdentifier);
@@ -121,24 +137,16 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const isFormComplete = useMemo(() => {
         const requiredFields: (keyof typeof formData)[] = [
             'name', 'email', 'phone', 
-            'street', 'number', 'neighborhood', 'city', 'state', 'zip',
-            'width', 'length', 'depth'
+            'street', 'number', 'neighborhood', 'city', 'state', 'zip'
         ];
-        return requiredFields.every(field => formData[field] && formData[field].trim() !== '');
-    }, [formData]);
+        return requiredFields.every(field => formData[field] && formData[field].trim() !== '') && selectedTierIndex !== '';
+    }, [formData, selectedTierIndex]);
 
     const volume = useMemo(() => {
-        const { width, length, depth } = formData;
-        
-        const w = normalizeDimension(width);
-        const l = normalizeDimension(length);
-        const d = normalizeDimension(depth);
-
-        if (w > 0 && l > 0 && d > 0) {
-            return w * l * d * 1000;
-        }
-        return 0;
-    }, [formData.width, formData.length, formData.depth]);
+        if (selectedTierIndex === '' || !filteredTiers[Number(selectedTierIndex)]) return 0;
+        // For calculation purposes, we use the max volume of the selected tier
+        return filteredTiers[Number(selectedTierIndex)].max;
+    }, [selectedTierIndex, filteredTiers]);
 
     const monthlyFee = useMemo(() => {
         if (!settings || volume <= 0) return 0;
@@ -223,11 +231,11 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             return;
         }
         if (volume <= 0) {
-             showNotification("As dimensões da piscina parecem incorretas (Volume zerado). Use ponto ou vírgula para decimais.", "error");
+             showNotification("Selecione uma faixa de volume válida.", "error");
              return;
         }
         if(!monthlyFee || monthlyFee <= 0) {
-             showNotification("Não foi possível calcular o preço. Verifique se o volume calculado está dentro das faixas atendidas pela empresa.", "error");
+             showNotification("Não foi possível calcular o preço. Verifique as configurações.", "error");
              return;
         }
         if (distanceFromHq === null) {
@@ -240,7 +248,7 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
     const handleFinalSubmit = async () => {
         setIsSubmitting(true);
         try {
-            const budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt' | 'updatedAt'> = {
+            const budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'> = {
                 name: formData.name,
                 email: formData.email,
                 phone: formData.phone,
@@ -252,10 +260,11 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
                     state: formData.state,
                     zip: formData.zip,
                 },
+                // Send representative dimensions for consistency
                 poolDimensions: {
-                    width: normalizeDimension(formData.width),
-                    length: normalizeDimension(formData.length),
-                    depth: normalizeDimension(formData.depth),
+                    width: 0,
+                    length: 0,
+                    depth: 0,
                 },
                 poolVolume: volume,
                 hasWellWater: options.hasWellWater,
@@ -273,8 +282,9 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             
             setShowSuccessPage(true);
             
-            setFormData({ name: '', email: '', phone: '', street: '', number: '', neighborhood: '', city: '', state: '', zip: '', width: '', length: '', depth: '' });
+            setFormData({ name: '', email: '', phone: '', street: '', number: '', neighborhood: '', city: '', state: '', zip: '' });
             setOptions({ hasWellWater: false, isPartyPool: false });
+            setSelectedTierIndex('');
             setDistanceFromHq(null);
         } catch (error: any) {
             showNotification(error.message || "Falha ao enviar orçamento.", 'error');
@@ -314,19 +324,16 @@ const PreBudgetView: React.FC<PreBudgetViewProps> = ({ appContext }) => {
             <form onSubmit={handleSubmit} className="space-y-6">
                 
                 <fieldset data-tour-id="dimensions" className="border p-4 rounded-md dark:border-gray-600">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">1. Dimensões da Piscina (metros)</legend>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
-                        <Input label="Largura" name="width" type="text" inputMode="decimal" value={formData.width} onChange={handleInputChange} required placeholder="ex: 4 ou 4,5" />
-                        <Input label="Comprimento" name="length" type="text" inputMode="decimal" value={formData.length} onChange={handleInputChange} required placeholder="ex: 8" />
-                        <Input label="Profundidade Média" name="depth" type="text" inputMode="decimal" value={formData.depth} onChange={handleInputChange} required placeholder="ex: 1.4 ou 1,4" />
+                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">1. Volume da Piscina</legend>
+                    <div className="mt-2">
+                        <Select
+                            label="Selecione a capacidade da sua piscina"
+                            value={selectedTierIndex}
+                            onChange={(e) => setSelectedTierIndex(e.target.value)}
+                            options={tierOptions}
+                        />
+                        <p className="text-xs text-gray-500 mt-1 italic">Dica: O volume geralmente consta no projeto ou nota fiscal de construção/instalação.</p>
                     </div>
-                     {volume > 0 ? (
-                        <div className="text-center mt-2 p-2 bg-blue-50 dark:bg-blue-900/30 rounded">
-                            <p className="text-lg font-medium text-secondary-600 dark:text-secondary-400">Volume Calculado: {volume.toLocaleString('pt-BR')} litros</p>
-                        </div>
-                     ) : (formData.width && formData.length && formData.depth) ? (
-                         <p className="text-center text-sm text-red-500 mt-2">Dimensões inválidas. Verifique se usou apenas números e vírgula/ponto.</p>
-                     ) : null}
                 </fieldset>
 
                 <fieldset data-tour-id="options" className="border p-4 rounded-md dark:border-gray-600">

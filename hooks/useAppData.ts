@@ -148,9 +148,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             try {
                 const adminQuery = await db.collection('users').where('role', '==', 'admin').limit(1).get();
                 setSetupCheck(adminQuery.empty ? 'needed' : 'done');
-            } catch (error) {
-                console.error("Error checking for admin user:", error);
-                setSetupCheck('needed'); 
+            } catch (error: any) {
+                if (error.code === 'permission-denied') {
+                    setSetupCheck('done');
+                } else {
+                    setSetupCheck('needed'); 
+                }
             }
         };
         checkAdminExists();
@@ -185,7 +188,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             return 0;
         }
 
-        console.log("Starting enhanced replenishment analysis...");
         const threshold = settings.automation.replenishmentStockThreshold;
         const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
         const pendingQuotesClientIds = new Set(replenishmentQuotes.filter(q => q.status === 'suggested' || q.status === 'sent').map(q => q.clientId));
@@ -206,20 +208,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             let total = 0;
 
             for (const lowItem of lowStockItems) {
-                const productInfo = products.find(p => 
-                    p.id === lowItem.productId || 
-                    p.name.toLowerCase().trim() === lowItem.name.toLowerCase().trim()
-                );
-
+                const productInfo = products.find(p => p.id === lowItem.productId);
                 if (productInfo) {
-                    let quantityToSuggest = 0;
-                    
-                    if (lowItem.maxQuantity && lowItem.maxQuantity > lowItem.quantity) {
-                        quantityToSuggest = lowItem.maxQuantity - lowItem.quantity;
-                    } else {
-                        quantityToSuggest = 5;
-                    }
-
+                    let quantityToSuggest = lowItem.maxQuantity ? (lowItem.maxQuantity - lowItem.quantity) : 5;
                     if (quantityToSuggest > 0) {
                         itemsToReplenish.push({ ...productInfo, quantity: quantityToSuggest });
                         total += productInfo.price * quantityToSuggest;
@@ -259,7 +250,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 try {
                     const batch = db.batch();
                     const settingsRef = db.collection('settings').doc('main');
-                    
                     const activeVips = clients.filter(c => c.clientStatus === 'Ativo' && c.plan === 'VIP');
                     
                     activeVips.forEach(vip => {
@@ -270,10 +260,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                     });
 
                     batch.set(settingsRef, { pricing: change.newPricing }, { merge: true });
-
-                    const changeRef = db.collection('pendingPriceChanges').doc(change.id);
-                    batch.update(changeRef, { status: 'applied' });
-                    
+                    batch.update(db.collection('pendingPriceChanges').doc(change.id), { status: 'applied' });
                     await batch.commit();
                 } catch (error) {
                     console.error(`Failed to apply price change ${change.id}:`, error);
@@ -289,100 +276,103 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     useEffect(() => {
         if (!isUserAdmin && !isUserTechnician) return;
 
+        const handlePermError = (collection: string) => (err: any) => {
+            console.warn(`Permission issue for ${collection}:`, err.code);
+            setLoadingState(collection as any, false);
+        };
+
         const unsubUsers = db.collection('users').where('role', 'in', ['admin', 'technician']).onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => doc.data() as UserData);
-            setUsers(data);
+            setUsers(snapshot.docs.map(doc => doc.data() as UserData));
             setLoadingState('users', false);
-        });
+        }, handlePermError('users'));
         
         const unsubClients = db.collection('clients').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
-            setClients(data);
+            setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
             setLoadingState('clients', false);
-        });
-        const unsubBudgets = db.collection('pre-budgets').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetQuote));
-            setBudgetQuotes(data);
-            setLoadingState('budgetQuotes', false);
-        });
-        const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
-            if (doc.exists) {
-                setRoutes(doc.data() as Routes);
-            }
-            setLoadingState('routes', false);
-        });
-        const unsubOrders = db.collection('orders').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            setOrders(data);
-            setLoadingState('orders', false);
-        });
-        const unsubQuotes = db.collection('replenishmentQuotes').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote));
-            setReplenishmentQuotes(data);
-            setLoadingState('replenishmentQuotes', false);
-        });
-        const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
-            setBanks(data);
-            setLoadingState('banks', false);
-        });
-        const unsubTransactions = db.collection('transactions').orderBy('date', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-            setTransactions(data);
-            setLoadingState('transactions', false);
-        });
-        const unsubAdvanceRequests = db.collection('advancePaymentRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest));
-            setAdvancePaymentRequests(data);
-            setLoadingState('advancePaymentRequests', false);
-        });
-        const unsubStockProducts = db.collection('stockProducts').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockProduct));
-            setStockProducts(data);
-            setLoadingState('stockProducts', false);
-        });
-         const unsubPendingChanges = db.collection('pendingPriceChanges').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
-            setPendingPriceChanges(data);
-            setLoadingState('pendingPriceChanges', false);
-        });
-        const unsubEvents = db.collection('poolEvents').orderBy('eventDate', 'asc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
-            setPoolEvents(data);
-            setLoadingState('poolEvents', false);
-        });
-        const unsubPlanChanges = db.collection('planChangeRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest));
-            setPlanChangeRequests(data);
-            setLoadingState('planChangeRequests', false);
-        });
+        }, handlePermError('clients'));
 
+        const unsubBudgets = db.collection('pre-budgets').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            setBudgetQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetQuote)));
+            setLoadingState('budgetQuotes', false);
+        }, handlePermError('budgetQuotes'));
+
+        const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
+            if (doc.exists) setRoutes(doc.data() as Routes);
+            setLoadingState('routes', false);
+        }, handlePermError('routes'));
+
+        const unsubOrders = db.collection('orders').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
+            setLoadingState('orders', false);
+        }, handlePermError('orders'));
+
+        const unsubQuotes = db.collection('replenishmentQuotes').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            setReplenishmentQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote)));
+            setLoadingState('replenishmentQuotes', false);
+        }, handlePermError('replenishmentQuotes'));
+
+        const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
+            setBanks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank)));
+            setLoadingState('banks', false);
+        }, handlePermError('banks'));
+
+        const unsubTransactions = db.collection('transactions').orderBy('date', 'desc').onSnapshot(snapshot => {
+            setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+            setLoadingState('transactions', false);
+        }, handlePermError('transactions'));
+
+        const unsubAdvanceRequests = db.collection('advancePaymentRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            setAdvancePaymentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest)));
+            setLoadingState('advancePaymentRequests', false);
+        }, handlePermError('advancePaymentRequests'));
+
+        const unsubStockProducts = db.collection('stockProducts').onSnapshot(snapshot => {
+            setStockProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockProduct)));
+            setLoadingState('stockProducts', false);
+        }, handlePermError('stockProducts'));
+
+        const unsubPendingChanges = db.collection('pendingPriceChanges').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            setPendingPriceChanges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange)));
+            setLoadingState('pendingPriceChanges', false);
+        }, handlePermError('pendingPriceChanges'));
+
+        const unsubEvents = db.collection('poolEvents').orderBy('eventDate', 'asc').onSnapshot(snapshot => {
+            setPoolEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent)));
+            setLoadingState('poolEvents', false);
+        }, handlePermError('poolEvents'));
+
+        const unsubPlanChanges = db.collection('planChangeRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            setPlanChangeRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest)));
+            setLoadingState('planChangeRequests', false);
+        }, handlePermError('planChangeRequests'));
 
         return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); unsubEvents(); unsubPlanChanges(); };
     }, [isUserAdmin, isUserTechnician]);
     
     useEffect(() => {
+        const handlePermError = (collection: string) => (err: any) => {
+            if (collection === 'settings') setSettings(defaultSettings);
+            setLoadingState(collection as any, false);
+        };
+
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            setProducts(data);
+            setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
             setLoadingState('products', false);
-        });
+        }, handlePermError('products'));
+
         const unsubSettings = db.collection('settings').doc('main').onSnapshot(doc => {
             if (doc.exists) {
-                const settingsData = doc.data();
-                const mergedSettings = deepMerge(JSON.parse(JSON.stringify(defaultSettings)), settingsData);
-                setSettings(mergedSettings);
+                setSettings(deepMerge(JSON.parse(JSON.stringify(defaultSettings)), doc.data()));
             } else {
                 setSettings(defaultSettings);
             }
-             setLoadingState('settings', false);
-        });
+            setLoadingState('settings', false);
+        }, handlePermError('settings'));
         
         const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank));
-            setBanks(data);
+            setBanks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank)));
             setLoadingState('banks', false);
-        });
+        }, handlePermError('banks'));
 
         return () => { unsubProducts(); unsubSettings(); unsubBanks(); };
     }, []);
@@ -390,203 +380,82 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     useEffect(() => {
         if (userData?.role !== 'client' || !user) return;
         
+        const handlePermError = (collection: string) => () => setLoadingState(collection as any, false);
+
         const unsubClient = db.collection('clients').where('uid', '==', user.uid).limit(1).onSnapshot(snapshot => {
-            if (!snapshot.empty) {
-                const doc = snapshot.docs[0];
-                const clientData = { id: doc.id, ...doc.data() } as Client;
-                setClients([clientData]);
-            }
+            if (!snapshot.empty) setClients([{ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Client]);
             setLoadingState('clients', false);
-        }, (error: Error) => {
-            console.error("Error fetching client doc:", error);
-            setLoadingState('clients', false);
-        });
+        }, handlePermError('clients'));
 
-        const unsubOrders = db.collection('orders').where('clientId', '==', user.uid).onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-            data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
-            setOrders(data);
+        const unsubOrders = db.collection('orders').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
+            setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
             setLoadingState('orders', false);
-        }, (error: Error) => {
-            console.error("Error fetching client orders:", error);
-            setLoadingState('orders', false);
-        });
+        }, handlePermError('orders'));
 
-        const unsubQuotes = db.collection('replenishmentQuotes').where('clientId', '==', user.uid).onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote));
-            data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
-            setReplenishmentQuotes(data);
+        const unsubQuotes = db.collection('replenishmentQuotes').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
+            setReplenishmentQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote)));
             setLoadingState('replenishmentQuotes', false);
-        }, (error: Error) => {
-            console.error("Error fetching client replenishment quotes:", error);
-            setLoadingState('replenishmentQuotes', false);
-        });
+        }, handlePermError('replenishmentQuotes'));
         
-        const unsubAdvanceRequests = db.collection('advancePaymentRequests').where('clientId', '==', user.uid).onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest));
-            data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
-            setAdvancePaymentRequests(data);
+        const unsubAdvanceRequests = db.collection('advancePaymentRequests').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
+            setAdvancePaymentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest)));
             setLoadingState('advancePaymentRequests', false);
-        }, (error: Error) => {
-            console.error("Error fetching client advance payment requests:", error);
-            setLoadingState('advancePaymentRequests', false);
-        });
+        }, handlePermError('advancePaymentRequests'));
 
-        const unsubEvents = db.collection('poolEvents').where('clientId', '==', user.uid).onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent));
-            data.sort((a, b) => (toDate(b.eventDate)?.getTime() || 0) - (toDate(a.eventDate)?.getTime() || 0));
-            setPoolEvents(data);
+        const unsubEvents = db.collection('poolEvents').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
+            setPoolEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent)));
             setLoadingState('poolEvents', false);
-        }, (error: Error) => {
-            console.error("Error fetching client pool events:", error);
-            setLoadingState('poolEvents', false);
-        });
+        }, handlePermError('poolEvents'));
         
-        const unsubPendingChanges = db.collection('pendingPriceChanges')
-            .where('status', '==', 'pending')
-            .onSnapshot(snapshot => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange));
-                setPendingPriceChanges(data);
-                setLoadingState('pendingPriceChanges', false);
-            }, (error: Error) => {
-                 console.error("Error fetching pending price changes for client:", error);
-                 setLoadingState('pendingPriceChanges', false);
-            });
+        const unsubPendingChanges = db.collection('pendingPriceChanges').where('status', '==', 'pending').onSnapshot(snapshot => {
+            setPendingPriceChanges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange)));
+            setLoadingState('pendingPriceChanges', false);
+        }, handlePermError('pendingPriceChanges'));
             
-        const unsubPlanChanges = db.collection('planChangeRequests').where('clientId', '==', user.uid).onSnapshot(snapshot => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest));
-            setPlanChangeRequests(data);
+        const unsubPlanChanges = db.collection('planChangeRequests').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
+            setPlanChangeRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest)));
             setLoadingState('planChangeRequests', false);
-        }, (error: Error) => {
-            console.error("Error fetching client plan change requests:", error);
-            setLoadingState('planChangeRequests', false);
-        });
+        }, handlePermError('planChangeRequests'));
 
         return () => { unsubClient(); unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPendingChanges(); unsubPlanChanges(); };
     }, [user, userData]);
 
     const createInitialAdmin = async (name: string, email: string, pass: string) => {
-        const adminQuery = await db.collection('users').where('role', '==', 'admin').limit(1).get();
-        if (!adminQuery.empty) {
-            throw new Error("Um administrador já existe. A criação foi cancelada.");
-        }
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
-            const newUid = userCredential.user.uid;
-            
-            await db.collection('users').doc(newUid).set({
-                name,
-                email,
-                role: 'admin',
-                uid: newUid,
-            });
-            setSetupCheck('done');
-        } catch (error: any) {
-            console.error("Error creating initial admin:", error);
-            throw new Error("Falha ao criar administrador: " + error.message);
-        }
+        const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
+        const newUid = userCredential.user.uid;
+        await db.collection('users').doc(newUid).set({ name, email, role: 'admin', uid: newUid });
+        setSetupCheck('done');
     };
 
     const createTechnician = async (name: string, email: string, pass: string) => {
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
-            const newUid = userCredential.user.uid;
-        
-            await db.collection('users').doc(newUid).set({
-                name,
-                email,
-                role: 'technician',
-                uid: newUid,
-            });
-
-            await auth.signOut();
-        } catch (error: any) {
-            console.error("Error creating technician:", error);
-            if (error.code === 'auth/email-already-in-use') {
-                throw new Error("Este e-mail já está em uso por outra conta.");
-            }
-            throw new Error("Falha ao criar a conta do técnico.");
-        }
+        const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
+        const newUid = userCredential.user.uid;
+        await db.collection('users').doc(newUid).set({ name, email, role: 'technician', uid: newUid });
+        await auth.signOut();
     };
 
 
     const approveBudgetQuote = async (budgetId: string, password: string, distanceFromHq?: number) => {
         const budgetDoc = await db.collection('pre-budgets').doc(budgetId).get();
         if (!budgetDoc.exists) throw new Error("Orçamento não encontrado.");
-
         const budget = budgetDoc.data() as BudgetQuote;
 
-        try {
-            const signInMethods = await auth.fetchSignInMethodsForEmail(budget.email);
-            if (signInMethods.length > 0) {
-                throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
-            }
-        } catch (error: any) {
-            if (error.message.startsWith("Já existe uma conta")) {
-                throw error;
-            }
-            console.error("Erro ao verificar e-mail do usuário:", error);
-            throw new Error("Falha ao verificar o e-mail do usuário. Tente novamente.");
-        }
-
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(budget.email, password);
-            const newUid = userCredential.user.uid;
-
-            const batch = db.batch();
-
-            const userDocRef = db.collection('users').doc(newUid);
-            batch.set(userDocRef, {
-                name: budget.name,
-                email: budget.email,
-                role: 'client',
-                uid: newUid,
-            });
-
-            const clientDocRef = db.collection('clients').doc();
-            const newClient: Omit<Client, 'id'> = {
-                uid: newUid,
-                name: budget.name,
-                email: budget.email,
-                phone: budget.phone,
-                address: budget.address,
-                poolDimensions: budget.poolDimensions,
-                poolVolume: budget.poolVolume,
-                hasWellWater: budget.hasWellWater,
-                includeProducts: false,
-                isPartyPool: budget.isPartyPool,
-                plan: budget.plan,
-                clientStatus: 'Ativo',
-                poolStatus: { ph: 7.2, cloro: 1.5, alcalinidade: 100, uso: 'Livre para uso' },
-                payment: {
-                    status: 'Pendente',
-                    dueDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
-                },
-                stock: [],
-                pixKey: '',
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                lastVisitDuration: 0,
-                distanceFromHq: distanceFromHq || budget.distanceFromHq || 0,
-            };
-            
-            if (budget.fidelityPlan) {
-                newClient.fidelityPlan = budget.fidelityPlan;
-            }
-
-            batch.set(clientDocRef, newClient);
-
-            const budgetRef = db.collection('pre-budgets').doc(budgetId);
-            batch.update(budgetRef, { status: 'approved' });
-            
-            await batch.commit();
-
-        } catch (error: any) {
-            console.error("Erro ao aprovar orçamento de novo cliente:", error);
-            if (error.code === 'auth/email-already-in-use') {
-                throw new Error("Já existe uma conta com este e-mail. Verifique a lista de clientes existentes.");
-            }
-            throw error;
-        }
+        const userCredential = await auth.createUserWithEmailAndPassword(budget.email, password);
+        const newUid = userCredential.user.uid;
+        const batch = db.batch();
+        batch.set(db.collection('users').doc(newUid), { name: budget.name, email: budget.email, role: 'client', uid: newUid });
+        batch.set(db.collection('clients').doc(), {
+            uid: newUid, name: budget.name, email: budget.email, phone: budget.phone, address: budget.address,
+            poolDimensions: budget.poolDimensions, poolVolume: budget.poolVolume, hasWellWater: budget.hasWellWater,
+            includeProducts: false, isPartyPool: budget.isPartyPool, plan: budget.plan, clientStatus: 'Ativo',
+            poolStatus: { ph: 7.2, cloro: 1.5, alcalinidade: 100, uso: 'Livre para uso' },
+            payment: { status: 'Pendente', dueDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString() },
+            stock: [], pixKey: '', createdAt: firebase.firestore.FieldValue.serverTimestamp(), lastVisitDuration: 0,
+            distanceFromHq: distanceFromHq || budget.distanceFromHq || 0,
+            fidelityPlan: budget.fidelityPlan || null
+        });
+        batch.update(db.collection('pre-budgets').doc(budgetId), { status: 'approved' });
+        await batch.commit();
     };
     
     const rejectBudgetQuote = (budgetId: string) => db.collection('pre-budgets').doc(budgetId).delete();
@@ -594,55 +463,28 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const deleteClient = (clientId: string) => db.collection('clients').doc(clientId).delete();
 
     const markAsPaid = async (client: Client, months: number, totalAmount: number) => {
-        if (!client.bankId) {
-            throw new Error("Por favor, associe um banco a este cliente antes de registrar um pagamento.");
-        }
-        
+        if (!client.bankId) throw new Error("Associe um banco a este cliente antes.");
         const bank = banks.find(b => b.id === client.bankId);
-        if (!bank) {
-            throw new Error("Banco associado não encontrado. Verifique as configurações.");
-        }
+        if (!bank) throw new Error("Banco não encontrado.");
         
         const batch = db.batch();
-
-        const transactionRef = db.collection('transactions').doc();
-        const newTransaction: Omit<Transaction, 'id'> = {
-            clientId: client.id,
-            clientName: client.name,
-            bankId: client.bankId,
-            bankName: bank.name,
-            amount: totalAmount,
-            date: firebase.firestore.FieldValue.serverTimestamp(),
-        };
-        batch.set(transactionRef, newTransaction);
+        batch.set(db.collection('transactions').doc(), {
+            clientId: client.id, clientName: client.name, bankId: client.bankId, bankName: bank.name,
+            amount: totalAmount, date: firebase.firestore.FieldValue.serverTimestamp()
+        });
         
         const nextDueDate = new Date(client.payment.dueDate);
         nextDueDate.setMonth(nextDueDate.getMonth() + months);
 
-        const clientRef = db.collection('clients').doc(client.id);
-        const clientUpdate: { [key: string]: any } = {
-            'payment.dueDate': nextDueDate.toISOString(),
-            'payment.status': 'Pago'
-        };
-
-        if (client.advancePaymentUntil) {
-            clientUpdate.advancePaymentUntil = firebase.firestore.FieldValue.delete();
-        }
-
+        const update: any = { 'payment.dueDate': nextDueDate.toISOString(), 'payment.status': 'Pago' };
+        if (client.advancePaymentUntil) update.advancePaymentUntil = firebase.firestore.FieldValue.delete();
         if (client.scheduledPlanChange) {
-            clientUpdate.plan = client.scheduledPlanChange.newPlan;
-            
-            if (client.scheduledPlanChange.fidelityPlan) {
-                clientUpdate.fidelityPlan = client.scheduledPlanChange.fidelityPlan;
-            } else {
-                clientUpdate.fidelityPlan = firebase.firestore.FieldValue.delete();
-            }
-            
-            clientUpdate.scheduledPlanChange = firebase.firestore.FieldValue.delete();
+            update.plan = client.scheduledPlanChange.newPlan;
+            update.fidelityPlan = client.scheduledPlanChange.fidelityPlan || firebase.firestore.FieldValue.delete();
+            update.scheduledPlanChange = firebase.firestore.FieldValue.delete();
         }
 
-        batch.update(clientRef, clientUpdate);
-
+        batch.update(db.collection('clients').doc(client.id), update);
         await batch.commit();
     };
     
@@ -652,289 +494,96 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         const client = clients.find(c => c.id === clientId);
         if (!client) return;
         await db.collection('routes').doc('main').set({
-            [dayKey]: {
-                clients: firebase.firestore.FieldValue.arrayUnion(client)
-            }
+            [dayKey]: { day: dayKey, isRouteActive: false, clients: firebase.firestore.FieldValue.arrayUnion(client) }
         }, { merge: true });
     };
 
     const unscheduleClient = async (clientId: string, dayKey: string) => {
-        const routeDay = routes[dayKey] as RouteDay | undefined;
+        const routeDay = routes[dayKey];
         if(!routeDay) return;
         const client = routeDay.clients.find(c => c.id === clientId);
         if (!client) return;
-        await db.collection('routes').doc('main').update({
-            [`${dayKey}.clients`]: firebase.firestore.FieldValue.arrayRemove(client)
-        });
+        await db.collection('routes').doc('main').update({ [`${dayKey}.clients`]: firebase.firestore.FieldValue.arrayRemove(client) });
     };
 
-    const toggleRouteStatus = (dayKey: string, status: boolean) => {
-        return db.collection('routes').doc('main').update({
-            [`${dayKey}.isRouteActive`]: status
-        });
-    };
+    const toggleRouteStatus = (dayKey: string, status: boolean) => db.collection('routes').doc('main').update({ [`${dayKey}.isRouteActive`]: status });
 
     const saveProduct = async (product: Omit<Product, 'id'> | Product, imageFile?: File) => {
         let productData = { ...product };
-        let docRef;
-    
-        if ('id' in product) {
-            docRef = db.collection('products').doc(product.id);
-        } else {
-            docRef = db.collection('products').doc();
-        }
-    
+        let docRef = ('id' in product) ? db.collection('products').doc(product.id) : db.collection('products').doc();
         if (imageFile) {
-            const compressedFile = await compressImage(imageFile, { maxWidth: 1024, quality: 0.8 });
-            const storageRef = storage.ref(`products/${docRef.id}/${compressedFile.name}`);
-            const snapshot = await storageRef.put(compressedFile);
+            const compressed = await compressImage(imageFile, { maxWidth: 1024, quality: 0.8 });
+            const snapshot = await storage.ref(`products/${docRef.id}/${compressed.name}`).put(compressed);
             productData.imageUrl = await snapshot.ref.getDownloadURL();
         }
-        
-        if ('id' in product) {
-            const { id, ...dataToUpdate } = productData as Product;
-            return docRef.update(dataToUpdate);
-        } else {
-            return docRef.set(productData);
-        }
+        return ('id' in product) ? docRef.update(productData) : docRef.set(productData);
     };
 
     const deleteProduct = (productId: string) => db.collection('products').doc(productId).delete();
+    const saveStockProduct = (product: Omit<StockProduct, 'id'> | StockProduct) => ('id' in product) ? db.collection('stockProducts').doc(product.id).update(product) : db.collection('stockProducts').add(product);
     
-    const saveStockProduct = (product: Omit<StockProduct, 'id'> | StockProduct) => {
-        if ('id' in product) {
-            return db.collection('stockProducts').doc(product.id).update(product);
-        }
-        return db.collection('stockProducts').add(product);
-    };
-
-    const deleteStockProduct = async (productId: string, cleanupClients = false) => {
+    // FIX: Updated deleteStockProduct to support client cleanup
+    const deleteStockProduct = async (productId: string, cleanupClients?: boolean) => {
         if (cleanupClients) {
             await removeStockProductFromAllClients(productId);
         }
         return db.collection('stockProducts').doc(productId).delete();
     };
 
+    // FIX: Added missing removeStockProductFromAllClients definition
     const removeStockProductFromAllClients = async (productId: string): Promise<number> => {
-        const clientsWithProduct = clients.filter(c => c.stock.some(s => s.productId === productId));
-        if (clientsWithProduct.length === 0) return 0;
-
+        const clientsSnap = await db.collection('clients').get();
+        let count = 0;
         const batch = db.batch();
-        clientsWithProduct.forEach(client => {
-            const updatedStock = client.stock.filter(s => s.productId !== productId);
-            const clientRef = db.collection('clients').doc(client.id);
-            batch.update(clientRef, { stock: updatedStock });
+        
+        clientsSnap.docs.forEach(doc => {
+            const client = doc.data() as Client;
+            if (client.stock && client.stock.some(s => s.productId === productId)) {
+                const newStock = client.stock.filter(s => s.productId !== productId);
+                batch.update(doc.ref, { stock: newStock });
+                count++;
+            }
         });
-
-        await batch.commit();
-        return clientsWithProduct.length;
+        
+        if (count > 0) await batch.commit();
+        return count;
     };
 
-    const saveBank = (bank: Omit<Bank, 'id'> | Bank) => {
-        if ('id' in bank) {
-            return db.collection('banks').doc(bank.id).update(bank);
-        }
-        return db.collection('banks').add(bank);
-    };
-
+    const saveBank = (bank: Omit<Bank, 'id'> | Bank) => ('id' in bank) ? db.collection('banks').doc(bank.id).update(bank) : db.collection('banks').add(bank);
     const deleteBank = (bankId: string) => db.collection('banks').doc(bankId).delete();
-
     const updateOrderStatus = (orderId: string, status: OrderStatus) => db.collection('orders').doc(orderId).update({ status });
     
     const updateSettings = async (newSettings: Partial<Settings>, logoFile?: File, removeLogo?: boolean, onProgress?: (progress: number) => void) => {
-        const settingsUpdate: { [key: string]: any } = { ...newSettings };
-    
+        const update: any = { ...newSettings };
         if (removeLogo) {
-            const storageRef = storage.ref('settings/logo');
-            settingsUpdate.logoUrl = firebase.firestore.FieldValue.delete();
-            try {
-                await storageRef.delete();
-            } catch (error: any) {
-                if (error.code !== 'storage/object-not-found') {
-                    console.error("Error deleting old logo:", error);
-                }
-            }
+            update.logoUrl = firebase.firestore.FieldValue.delete();
+            try { await storage.ref('settings/logo').delete(); } catch(e) {}
         } else if (logoFile) {
-            const compressedFile = await compressImage(logoFile, { maxWidth: 512, quality: 0.9 });
-            const storageRef = storage.ref('settings/logo');
-            const uploadTask = storageRef.put(compressedFile);
-    
+            const compressed = await compressImage(logoFile, { maxWidth: 512, quality: 0.9 });
+            const uploadTask = storage.ref('settings/logo').put(compressed);
             await new Promise<void>((resolve, reject) => {
-                uploadTask.on('state_changed',
-                    (snapshot: any) => {
-                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                        if (onProgress) onProgress(progress);
-                    },
-                    (error: any) => {
-                        console.error("Upload failed:", error);
-                        reject(error);
-                    },
-                    async () => {
-                        settingsUpdate.logoUrl = await uploadTask.snapshot.ref.getDownloadURL();
-                        resolve();
-                    }
-                );
+                uploadTask.on('state_changed', (s: any) => onProgress?.((s.bytesTransferred / s.totalBytes) * 100), reject, async () => {
+                    update.logoUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                    resolve();
+                });
             });
         }
-    
-        return db.collection('settings').doc('main').set(settingsUpdate, { merge: true });
+        return db.collection('settings').doc('main').set(update, { merge: true });
     };
     
     const schedulePriceChange = async (newPricing: PricingSettings, affectedClients: AffectedClientPreview[]) => {
         const effectiveDate = new Date();
         effectiveDate.setDate(effectiveDate.getDate() + 30);
-
-        const newChange: Omit<PendingPriceChange, 'id'> = {
+        await db.collection('pendingPriceChanges').add({
             effectiveDate: firebase.firestore.Timestamp.fromDate(effectiveDate),
-            newPricing,
-            affectedClients,
-            status: 'pending',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        };
-
-        await db.collection('pendingPriceChanges').add(newChange);
-    };
-
-    const createBudgetQuote = (budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => {
-        const budget: Omit<BudgetQuote, 'id'> = {
-            ...budgetData,
-            status: 'pending',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        return db.collection('pre-budgets').add(budget);
-    };
-
-    const createOrder = (orderData: Omit<Order, 'id' | 'createdAt'>) => {
-        const order: Omit<Order, 'id'> = {
-            ...orderData,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        return db.collection('orders').add(order);
-    };
-
-    const updateReplenishmentQuoteStatus = async (quoteId: string, status: ReplenishmentQuoteStatus) => {
-        await db.collection('replenishmentQuotes').doc(quoteId).update({
-            status,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            newPricing, affectedClients, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
     };
 
-    const createAdvancePaymentRequest = (requestData: Omit<AdvancePaymentRequest, 'id'|'status'|'createdAt'|'updatedAt'>) => {
-        const request: Omit<AdvancePaymentRequest, 'id'> = {
-            ...requestData,
-            status: 'pending',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        };
-        return db.collection('advancePaymentRequests').add(request);
-    };
-
-    const approveAdvancePaymentRequest = async (requestId: string) => {
-        const requestDoc = await db.collection('advancePaymentRequests').doc(requestId).get();
-        if (!requestDoc.exists) throw new Error("Solicitação não encontrada.");
-        
-        const request = requestDoc.data() as AdvancePaymentRequest;
-        const client = clients.find(c => c.uid === request.clientId);
-
-        if (!client || !client.bankId) {
-            throw new Error("Cliente ou banco de recebimento do cliente não encontrado.");
-        }
-        const bank = banks.find(b => b.id === client.bankId);
-        if (!bank) {
-             throw new Error("Banco do cliente não configurado.");
-        }
-
-        const batch = db.batch();
-        
-        const transactionRef = db.collection('transactions').doc();
-        const newTransaction: Omit<Transaction, 'id'> = {
-            clientId: client.id,
-            clientName: client.name,
-            bankId: client.bankId,
-            bankName: bank.name,
-            amount: request.finalAmount,
-            date: firebase.firestore.FieldValue.serverTimestamp(),
-        };
-        batch.set(transactionRef, newTransaction);
-        
-        const nextDueDate = new Date(client.payment.dueDate);
-        nextDueDate.setMonth(nextDueDate.getMonth() + request.months);
-
-        const clientRef = db.collection('clients').doc(client.id);
-        batch.update(clientRef, {
-            'payment.dueDate': nextDueDate.toISOString(),
-            'payment.status': 'Pago',
-            'advancePaymentUntil': firebase.firestore.Timestamp.fromDate(nextDueDate)
-        });
-
-        const requestRef = db.collection('advancePaymentRequests').doc(requestId);
-        batch.update(requestRef, { status: 'approved', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-
-        await batch.commit();
-    };
+    const createBudgetQuote = (budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => db.collection('pre-budgets').add({ ...budgetData, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const createOrder = (orderData: Omit<Order, 'id' | 'createdAt'>) => db.collection('orders').add({ ...orderData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     
-    const rejectAdvancePaymentRequest = (requestId: string) => {
-        return db.collection('advancePaymentRequests').doc(requestId).update({ 
-            status: 'rejected',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    };
-
-    const addVisitRecord = async (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File, onProgress?: (progress: number) => void) => {
-        if (!userData || (userData.role !== 'admin' && userData.role !== 'technician')) {
-            throw new Error("Apenas administradores ou técnicos podem registrar visitas.");
-        }
-    
-        const visitId = db.collection('clients').doc().id;
-        let photoUrl = '';
-
-        if (photoFile) {
-            const compressedFile = await compressImage(photoFile, { maxWidth: 1920, quality: 0.75 });
-            const storageRef = storage.ref(`visits/${clientId}/${visitId}_${compressedFile.name}`);
-            const uploadTask = storageRef.put(compressedFile);
-
-            await new Promise<void>((resolve, reject) => {
-                uploadTask.on('state_changed', 
-                    (snapshot: any) => {
-                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                        if (onProgress) onProgress(progress);
-                    }, 
-                    (error: any) => reject(error), 
-                    async () => {
-                        photoUrl = await uploadTask.snapshot.ref.getDownloadURL();
-                        resolve();
-                    }
-                );
-            });
-        }
-        
-        const newVisit: Omit<Visit, 'photoUrl'> & { photoUrl?: string } = {
-            id: visitId,
-            technicianId: userData.uid,
-            technicianName: userData.name,
-            timestamp: firebase.firestore.Timestamp.now(),
-            ...visitData,
-        };
-
-        if (photoUrl) {
-            newVisit.photoUrl = photoUrl;
-        }
-
-        const clientRef = db.collection('clients').doc(clientId);
-        const batch = db.batch();
-        
-        batch.update(clientRef, {
-            visitHistory: firebase.firestore.FieldValue.arrayUnion(newVisit),
-            'poolStatus.ph': visitData.ph,
-            'poolStatus.cloro': visitData.cloro,
-            'poolStatus.alcalinidade': visitData.alcalinidade,
-            'poolStatus.uso': visitData.uso,
-        });
-
-        await batch.commit();
-    };
-
-
+    // FIX: Added missing getClientData definition
     const getClientData = useCallback(async (): Promise<Client | null> => {
         if (userData?.role !== 'client' || !user) return null;
         setLoadingState('clients', true);
@@ -955,141 +604,108 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         }
     }, [user, userData]);
 
-    const resetReportsData = async () => {
-        if (!window.confirm("Você tem certeza? Esta ação irá apagar todos os dados de relatórios (orçamentos, pedidos, sugestões de reposição e rotas), mas NÃO APAGARÁ seus clientes, produtos ou visitas. Esta ação é irreversível.")) {
-            return;
-        }
+    const updateReplenishmentQuoteStatus = (quoteId: string, status: ReplenishmentQuoteStatus) => db.collection('replenishmentQuotes').doc(quoteId).update({ status, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const createAdvancePaymentRequest = (requestData: Omit<AdvancePaymentRequest, 'id'|'status'|'createdAt'|'updatedAt'>) => db.collection('advancePaymentRequests').add({ ...requestData, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-        try {
-            const collectionsToDelete = ['pre-budgets', 'orders', 'replenishmentQuotes', 'transactions', 'advancePaymentRequests', 'planChangeRequests'];
-            for (const collectionName of collectionsToDelete) {
-                const snapshot = await db.collection(collectionName).get();
-                const batch = db.batch();
-                snapshot.docs.forEach(doc => {
-                    batch.delete(doc.ref);
+    const approveAdvancePaymentRequest = async (requestId: string) => {
+        const doc = await db.collection('advancePaymentRequests').doc(requestId).get();
+        if (!doc.exists) throw new Error("Solicitação não encontrada.");
+        const req = doc.data() as AdvancePaymentRequest;
+        const client = clients.find(c => c.uid === req.clientId);
+        if (!client || !client.bankId) throw new Error("Cliente ou banco não encontrado.");
+        const bank = banks.find(b => b.id === client.bankId);
+        if (!bank) throw new Error("Banco não configurado.");
+
+        const batch = db.batch();
+        batch.set(db.collection('transactions').doc(), { clientId: client.id, clientName: client.name, bankId: client.bankId, bankName: bank.name, amount: req.finalAmount, date: firebase.firestore.FieldValue.serverTimestamp() });
+        const nextDueDate = new Date(client.payment.dueDate);
+        nextDueDate.setMonth(nextDueDate.getMonth() + req.months);
+        batch.update(db.collection('clients').doc(client.id), { 'payment.dueDate': nextDueDate.toISOString(), 'payment.status': 'Pago', 'advancePaymentUntil': firebase.firestore.Timestamp.fromDate(nextDueDate) });
+        batch.update(db.collection('advancePaymentRequests').doc(requestId), { status: 'approved', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        await batch.commit();
+    };
+    
+    const rejectAdvancePaymentRequest = (requestId: string) => db.collection('advancePaymentRequests').doc(requestId).update({ status: 'rejected', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+    const addVisitRecord = async (clientId: string, visitData: Omit<Visit, 'id' | 'photoUrl' | 'timestamp' | 'technicianId' | 'technicianName'>, photoFile?: File, onProgress?: (progress: number) => void) => {
+        if (!userData || (userData.role !== 'admin' && userData.role !== 'technician')) throw new Error("Acesso negado.");
+        const visitId = db.collection('clients').doc().id;
+        let photoUrl = '';
+        if (photoFile) {
+            const compressed = await compressImage(photoFile, { maxWidth: 1920, quality: 0.75 });
+            const uploadTask = storage.ref(`visits/${clientId}/${visitId}_${compressed.name}`).put(compressed);
+            await new Promise<void>((resolve, reject) => {
+                uploadTask.on('state_changed', (s: any) => onProgress?.((s.bytesTransferred / s.totalBytes) * 100), reject, async () => {
+                    photoUrl = await uploadTask.snapshot.ref.getDownloadURL();
+                    resolve();
                 });
-                await batch.commit();
-            }
-
-            await db.collection('routes').doc('main').set({});
-            
-            return Promise.resolve();
-        } catch (error) {
-            console.error("Erro ao resetar os dados:", error);
-            throw error;
+            });
         }
+        const newVisit: any = { id: visitId, technicianId: userData.uid, technicianName: userData.name, timestamp: firebase.firestore.Timestamp.now(), ...visitData };
+        if (photoUrl) newVisit.photoUrl = photoUrl;
+        await db.collection('clients').doc(clientId).update({
+            visitHistory: firebase.firestore.FieldValue.arrayUnion(newVisit),
+            'poolStatus.ph': visitData.ph, 'poolStatus.cloro': visitData.cloro, 'poolStatus.alcalinidade': visitData.alcalinidade, 'poolStatus.uso': visitData.uso
+        });
     };
 
-    const createPoolEvent = (eventData: Omit<PoolEvent, 'id' | 'status' | 'createdAt'>) => {
-        const event: Omit<PoolEvent, 'id'> = {
-            ...eventData,
-            status: 'notified',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        return db.collection('poolEvents').add(event);
+    const resetReportsData = async () => {
+        if (!window.confirm("Confirma o reset? Isso apagará orçamentos, pedidos e transações.")) return;
+        const cols = ['pre-budgets', 'orders', 'replenishmentQuotes', 'transactions', 'advancePaymentRequests', 'planChangeRequests'];
+        for (const c of cols) {
+            const snap = await db.collection(c).get();
+            const batch = db.batch();
+            snap.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+        await db.collection('routes').doc('main').set({});
     };
 
-    const acknowledgePoolEvent = (eventId: string) => {
-        return db.collection('poolEvents').doc(eventId).update({ status: 'acknowledged' });
-    };
-
-    const deletePoolEvent = (eventId: string) => {
-        return db.collection('poolEvents').doc(eventId).delete();
-    };
+    const createPoolEvent = (eventData: Omit<PoolEvent, 'id' | 'status' | 'createdAt'>) => db.collection('poolEvents').add({ ...eventData, status: 'notified', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const acknowledgePoolEvent = (eventId: string) => db.collection('poolEvents').doc(eventId).update({ status: 'acknowledged' });
+    const deletePoolEvent = (eventId: string) => db.collection('poolEvents').doc(eventId).delete();
 
     const saveRecessPeriod = async (recess: Omit<RecessPeriod, 'id'> | RecessPeriod) => {
-        const settingsDoc = await db.collection('settings').doc('main').get();
-        const currentSettings = settingsDoc.data() as Settings;
-        const currentRecesses = currentSettings.recessPeriods || [];
-
+        const snap = await db.collection('settings').doc('main').get();
+        const recesses = (snap.data() as Settings).recessPeriods || [];
         if ('id' in recess) {
-            const index = currentRecesses.findIndex(r => r.id === recess.id);
-            if (index > -1) {
-                currentRecesses[index] = recess;
-            }
+            const idx = recesses.findIndex(r => r.id === recess.id);
+            if (idx > -1) recesses[idx] = recess;
         } else {
-            const newRecess = { ...recess, id: db.collection('settings').doc().id };
-            currentRecesses.push(newRecess);
+            recesses.push({ ...recess, id: db.collection('settings').doc().id });
         }
-
-        return db.collection('settings').doc('main').update({ recessPeriods: currentRecesses });
+        return db.collection('settings').doc('main').update({ recessPeriods: recesses });
     };
 
     const deleteRecessPeriod = async (recessId: string) => {
-        const settingsDoc = await db.collection('settings').doc('main').get();
-        const currentSettings = settingsDoc.data() as Settings;
-        const currentRecesses = currentSettings.recessPeriods || [];
-        
-        const updatedRecesses = currentRecesses.filter(r => r.id !== recessId);
-
-        return db.collection('settings').doc('main').update({ recessPeriods: updatedRecesses });
+        const snap = await db.collection('settings').doc('main').get();
+        const recesses = ((snap.data() as Settings).recessPeriods || []).filter(r => r.id !== recessId);
+        return db.collection('settings').doc('main').update({ recessPeriods: recesses });
     };
 
-    const requestPlanChange = async (clientId: string, clientName: string, currentPlan: PlanType, requestedPlan: PlanType) => {
-        const request: Omit<PlanChangeRequest, 'id'> = {
-            clientId,
-            clientName,
-            currentPlan,
-            requestedPlan,
-            status: 'pending',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        await db.collection('planChangeRequests').add(request);
-    };
-
-    const respondToPlanChangeRequest = async (requestId: string, proposedPrice: number, notes: string) => {
-        await db.collection('planChangeRequests').doc(requestId).update({
-            status: 'quoted',
-            proposedPrice,
-            adminNotes: notes,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    };
+    const requestPlanChange = (clientId: string, clientName: string, currentPlan: PlanType, requestedPlan: PlanType) => db.collection('planChangeRequests').add({ clientId, clientName, currentPlan, requestedPlan, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const respondToPlanChangeRequest = (requestId: string, proposedPrice: number, notes: string) => db.collection('planChangeRequests').doc(requestId).update({ status: 'quoted', proposedPrice, adminNotes: notes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
 
     const acceptPlanChange = async (requestId: string, price: number, fidelityPlan?: FidelityPlan) => {
-        const requestDoc = await db.collection('planChangeRequests').doc(requestId).get();
-        if (!requestDoc.exists) return;
-        const request = requestDoc.data() as PlanChangeRequest;
-        
-        const clientQuery = await db.collection('clients').where('uid', '==', request.clientId).limit(1).get();
-        if (!clientQuery.empty) {
-            const clientDoc = clientQuery.docs[0];
-            const updateData: any = {
-                scheduledPlanChange: {
-                    newPlan: request.requestedPlan,
-                    newPrice: price,
-                    effectiveDate: firebase.firestore.Timestamp.fromDate(new Date())
-                }
-            };
-            if (fidelityPlan) updateData.scheduledPlanChange.fidelityPlan = fidelityPlan;
-            await clientDoc.ref.update(updateData);
+        const snap = await db.collection('planChangeRequests').doc(requestId).get();
+        if (!snap.exists) return;
+        const req = snap.data() as PlanChangeRequest;
+        const clientSnap = await db.collection('clients').where('uid', '==', req.clientId).limit(1).get();
+        if (!clientSnap.empty) {
+            const update: any = { scheduledPlanChange: { newPlan: req.requestedPlan, newPrice: price, effectiveDate: firebase.firestore.Timestamp.fromDate(new Date()) } };
+            if (fidelityPlan) update.scheduledPlanChange.fidelityPlan = fidelityPlan;
+            await clientSnap.docs[0].ref.update(update);
         }
-        await db.collection('planChangeRequests').doc(requestId).update({
-            status: 'accepted',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        await db.collection('planChangeRequests').doc(requestId).update({ status: 'accepted', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     };
 
-    const cancelPlanChangeRequest = async (requestId: string) => {
-        await db.collection('planChangeRequests').doc(requestId).update({
-            status: 'rejected',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    };
+    const cancelPlanChangeRequest = (requestId: string) => db.collection('planChangeRequests').doc(requestId).update({ status: 'rejected', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-    const cancelScheduledPlanChange = async (clientId: string) => {
-        await db.collection('clients').doc(clientId).update({
-            scheduledPlanChange: firebase.firestore.FieldValue.delete()
-        });
-    };
+    // FIX: Added missing cancelScheduledPlanChange definition
+    const cancelScheduledPlanChange = (clientId: string) => db.collection('clients').doc(clientId).update({ scheduledPlanChange: firebase.firestore.FieldValue.delete() });
 
-    const acknowledgeTerms = async (clientId: string) => {
-        await db.collection('clients').doc(clientId).update({
-            lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-    };
-
+    // FIX: Added missing acknowledgeTerms definition
+    const acknowledgeTerms = (clientId: string) => db.collection('clients').doc(clientId).update({ lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp() });
 
     return {
         clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, planChangeRequests, loading,
@@ -1099,18 +715,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         scheduleClient, unscheduleClient, toggleRouteStatus, saveProduct, deleteProduct, saveStockProduct, deleteStockProduct, removeStockProductFromAllClients, saveBank, deleteBank,
         updateOrderStatus, updateSettings, schedulePriceChange, createBudgetQuote, createOrder, getClientData,
         updateReplenishmentQuoteStatus, triggerReplenishmentAnalysis, createAdvancePaymentRequest, approveAdvancePaymentRequest, rejectAdvancePaymentRequest,
-        addVisitRecord,
-        resetReportsData,
-        createPoolEvent,
-        acknowledgePoolEvent,
-        deletePoolEvent,
-        saveRecessPeriod,
-        deleteRecessPeriod,
-        requestPlanChange,
-        respondToPlanChangeRequest,
-        acceptPlanChange,
-        cancelPlanChangeRequest,
-        cancelScheduledPlanChange,
-        acknowledgeTerms
+        addVisitRecord, resetReportsData, createPoolEvent, acknowledgePoolEvent, deletePoolEvent, saveRecessPeriod, deleteRecessPeriod,
+        requestPlanChange, respondToPlanChangeRequest, acceptPlanChange, cancelPlanChangeRequest, cancelScheduledPlanChange, acknowledgeTerms
     };
 };
