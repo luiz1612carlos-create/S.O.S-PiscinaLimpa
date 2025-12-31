@@ -276,89 +276,79 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     useEffect(() => {
         if (!isUserAdmin && !isUserTechnician) return;
 
-        const handlePermError = (collection: string) => (err: any) => {
-            console.warn(`Permission issue for ${collection}:`, err.code);
-            setLoadingState(collection as any, false);
-        };
-
         const unsubUsers = db.collection('users').where('role', 'in', ['admin', 'technician']).onSnapshot(snapshot => {
             setUsers(snapshot.docs.map(doc => doc.data() as UserData));
             setLoadingState('users', false);
-        }, handlePermError('users'));
+        });
         
         const unsubClients = db.collection('clients').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
             setLoadingState('clients', false);
-        }, handlePermError('clients'));
+        });
 
-        const unsubBudgets = db.collection('pre-budgets').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+        const unsubBudgets = db.collection('quotes').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setBudgetQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetQuote)));
             setLoadingState('budgetQuotes', false);
-        }, handlePermError('budgetQuotes'));
+        });
 
         const unsubRoutes = db.collection('routes').doc('main').onSnapshot(doc => {
             if (doc.exists) setRoutes(doc.data() as Routes);
             setLoadingState('routes', false);
-        }, handlePermError('routes'));
+        });
 
         const unsubOrders = db.collection('orders').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
             setLoadingState('orders', false);
-        }, handlePermError('orders'));
+        });
 
         const unsubQuotes = db.collection('replenishmentQuotes').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setReplenishmentQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote)));
             setLoadingState('replenishmentQuotes', false);
-        }, handlePermError('replenishmentQuotes'));
+        });
 
         const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
             setBanks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank)));
             setLoadingState('banks', false);
-        }, handlePermError('banks'));
+        });
 
         const unsubTransactions = db.collection('transactions').orderBy('date', 'desc').onSnapshot(snapshot => {
             setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
             setLoadingState('transactions', false);
-        }, handlePermError('transactions'));
+        });
 
         const unsubAdvanceRequests = db.collection('advancePaymentRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setAdvancePaymentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest)));
             setLoadingState('advancePaymentRequests', false);
-        }, handlePermError('advancePaymentRequests'));
+        });
 
         const unsubStockProducts = db.collection('stockProducts').onSnapshot(snapshot => {
             setStockProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockProduct)));
             setLoadingState('stockProducts', false);
-        }, handlePermError('stockProducts'));
+        });
 
         const unsubPendingChanges = db.collection('pendingPriceChanges').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setPendingPriceChanges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange)));
             setLoadingState('pendingPriceChanges', false);
-        }, handlePermError('pendingPriceChanges'));
+        });
 
         const unsubEvents = db.collection('poolEvents').orderBy('eventDate', 'asc').onSnapshot(snapshot => {
             setPoolEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent)));
             setLoadingState('poolEvents', false);
-        }, handlePermError('poolEvents'));
+        });
 
         const unsubPlanChanges = db.collection('planChangeRequests').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
             setPlanChangeRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest)));
             setLoadingState('planChangeRequests', false);
-        }, handlePermError('planChangeRequests'));
+        });
 
         return () => { unsubUsers(); unsubClients(); unsubBudgets(); unsubRoutes(); unsubOrders(); unsubQuotes(); unsubBanks(); unsubTransactions(); unsubAdvanceRequests(); unsubStockProducts(); unsubPendingChanges(); unsubEvents(); unsubPlanChanges(); };
     }, [isUserAdmin, isUserTechnician]);
     
     useEffect(() => {
-        const handlePermError = (collection: string) => (err: any) => {
-            if (collection === 'settings') setSettings(defaultSettings);
-            setLoadingState(collection as any, false);
-        };
-
         const unsubProducts = db.collection('products').onSnapshot(snapshot => {
             setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
             setLoadingState('products', false);
-        }, handlePermError('products'));
+        });
 
         const unsubSettings = db.collection('settings').doc('main').onSnapshot(doc => {
             if (doc.exists) {
@@ -367,12 +357,12 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
                 setSettings(defaultSettings);
             }
             setLoadingState('settings', false);
-        }, handlePermError('settings'));
+        });
         
         const unsubBanks = db.collection('banks').onSnapshot(snapshot => {
             setBanks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bank)));
             setLoadingState('banks', false);
-        }, handlePermError('banks'));
+        });
 
         return () => { unsubProducts(); unsubSettings(); unsubBanks(); };
     }, []);
@@ -380,42 +370,40 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     useEffect(() => {
         if (userData?.role !== 'client' || !user) return;
         
-        const handlePermError = (collection: string) => () => setLoadingState(collection as any, false);
-
         const unsubClient = db.collection('clients').where('uid', '==', user.uid).limit(1).onSnapshot(snapshot => {
             if (!snapshot.empty) setClients([{ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Client]);
             setLoadingState('clients', false);
-        }, handlePermError('clients'));
+        });
 
         const unsubOrders = db.collection('orders').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
             setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
             setLoadingState('orders', false);
-        }, handlePermError('orders'));
+        });
 
         const unsubQuotes = db.collection('replenishmentQuotes').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
             setReplenishmentQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReplenishmentQuote)));
             setLoadingState('replenishmentQuotes', false);
-        }, handlePermError('replenishmentQuotes'));
+        });
         
         const unsubAdvanceRequests = db.collection('advancePaymentRequests').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
             setAdvancePaymentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdvancePaymentRequest)));
             setLoadingState('advancePaymentRequests', false);
-        }, handlePermError('advancePaymentRequests'));
+        });
 
         const unsubEvents = db.collection('poolEvents').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
             setPoolEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PoolEvent)));
             setLoadingState('poolEvents', false);
-        }, handlePermError('poolEvents'));
+        });
         
         const unsubPendingChanges = db.collection('pendingPriceChanges').where('status', '==', 'pending').onSnapshot(snapshot => {
             setPendingPriceChanges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PendingPriceChange)));
             setLoadingState('pendingPriceChanges', false);
-        }, handlePermError('pendingPriceChanges'));
+        });
             
         const unsubPlanChanges = db.collection('planChangeRequests').where('clientId', 'in', [user.uid, user.id || '']).onSnapshot(snapshot => {
             setPlanChangeRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanChangeRequest)));
             setLoadingState('planChangeRequests', false);
-        }, handlePermError('planChangeRequests'));
+        });
 
         return () => { unsubClient(); unsubOrders(); unsubQuotes(); unsubAdvanceRequests(); unsubEvents(); unsubPendingChanges(); unsubPlanChanges(); };
     }, [user, userData]);
@@ -436,7 +424,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
 
     const approveBudgetQuote = async (budgetId: string, password: string, distanceFromHq?: number) => {
-        const budgetDoc = await db.collection('pre-budgets').doc(budgetId).get();
+        const budgetDoc = await db.collection('quotes').doc(budgetId).get();
         if (!budgetDoc.exists) throw new Error("Orçamento não encontrado.");
         const budget = budgetDoc.data() as BudgetQuote;
 
@@ -454,11 +442,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             distanceFromHq: distanceFromHq || budget.distanceFromHq || 0,
             fidelityPlan: budget.fidelityPlan || null
         });
-        batch.update(db.collection('pre-budgets').doc(budgetId), { status: 'approved' });
+        batch.update(db.collection('quotes').doc(budgetId), { status: 'approved' });
         await batch.commit();
     };
     
-    const rejectBudgetQuote = (budgetId: string) => db.collection('pre-budgets').doc(budgetId).delete();
+    const rejectBudgetQuote = (budgetId: string) => db.collection('quotes').doc(budgetId).delete();
     const updateClient = (clientId: string, data: Partial<Client>) => db.collection('clients').doc(clientId).update(data);
     const deleteClient = (clientId: string) => db.collection('clients').doc(clientId).delete();
 
@@ -522,7 +510,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const deleteProduct = (productId: string) => db.collection('products').doc(productId).delete();
     const saveStockProduct = (product: Omit<StockProduct, 'id'> | StockProduct) => ('id' in product) ? db.collection('stockProducts').doc(product.id).update(product) : db.collection('stockProducts').add(product);
     
-    // FIX: Updated deleteStockProduct to support client cleanup
     const deleteStockProduct = async (productId: string, cleanupClients?: boolean) => {
         if (cleanupClients) {
             await removeStockProductFromAllClients(productId);
@@ -530,7 +517,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         return db.collection('stockProducts').doc(productId).delete();
     };
 
-    // FIX: Added missing removeStockProductFromAllClients definition
     const removeStockProductFromAllClients = async (productId: string): Promise<number> => {
         const clientsSnap = await db.collection('clients').get();
         let count = 0;
@@ -580,10 +566,9 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
         });
     };
 
-    const createBudgetQuote = (budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => db.collection('pre-budgets').add({ ...budgetData, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const createBudgetQuote = (budgetData: Omit<BudgetQuote, 'id' | 'status' | 'createdAt'>) => db.collection('quotes').add({ ...budgetData, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     const createOrder = (orderData: Omit<Order, 'id' | 'createdAt'>) => db.collection('orders').add({ ...orderData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     
-    // FIX: Added missing getClientData definition
     const getClientData = useCallback(async (): Promise<Client | null> => {
         if (userData?.role !== 'client' || !user) return null;
         setLoadingState('clients', true);
@@ -651,7 +636,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     const resetReportsData = async () => {
         if (!window.confirm("Confirma o reset? Isso apagará orçamentos, pedidos e transações.")) return;
-        const cols = ['pre-budgets', 'orders', 'replenishmentQuotes', 'transactions', 'advancePaymentRequests', 'planChangeRequests'];
+        const cols = ['quotes', 'orders', 'replenishmentQuotes', 'transactions', 'advancePaymentRequests', 'planChangeRequests'];
         for (const c of cols) {
             const snap = await db.collection(c).get();
             const batch = db.batch();
@@ -680,7 +665,7 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
     const deleteRecessPeriod = async (recessId: string) => {
         const snap = await db.collection('settings').doc('main').get();
         const recesses = ((snap.data() as Settings).recessPeriods || []).filter(r => r.id !== recessId);
-        return db.collection('settings').doc('main').update({ recessPeriods: recesses });
+        return db.collection('settings').doc('main').update({ recessesPeriods: recesses });
     };
 
     const requestPlanChange = (clientId: string, clientName: string, currentPlan: PlanType, requestedPlan: PlanType) => db.collection('planChangeRequests').add({ clientId, clientName, currentPlan, requestedPlan, status: 'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -701,12 +686,11 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     const cancelPlanChangeRequest = (requestId: string) => db.collection('planChangeRequests').doc(requestId).update({ status: 'rejected', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-    // FIX: Added missing cancelScheduledPlanChange definition
     const cancelScheduledPlanChange = (clientId: string) => db.collection('clients').doc(clientId).update({ scheduledPlanChange: firebase.firestore.FieldValue.delete() });
 
-    // FIX: Added missing acknowledgeTerms definition
     const acknowledgeTerms = (clientId: string) => db.collection('clients').doc(clientId).update({ lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp() });
 
+    // FIX: Add pendingPriceChanges to the return object to satisfy AppData interface.
     return {
         clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, planChangeRequests, loading,
         setupCheck, createInitialAdmin, createTechnician,
