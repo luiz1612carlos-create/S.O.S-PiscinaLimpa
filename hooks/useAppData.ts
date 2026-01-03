@@ -311,8 +311,14 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             setLoadingState('banks', false);
         });
 
-        const unsubTransactions = db.collection('transactions').orderBy('date', 'desc').onSnapshot(snapshot => {
-            setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+        const unsubTransactions = db.collection('transactions').onSnapshot(snapshot => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+            data.sort((a, b) => {
+                const dateA = a.date?.seconds || (Date.now() / 1000);
+                const dateB = b.date?.seconds || (Date.now() / 1000);
+                return dateB - dateA;
+            });
+            setTransactions(data);
             setLoadingState('transactions', false);
         });
 
@@ -461,10 +467,31 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
             amount: totalAmount, date: firebase.firestore.FieldValue.serverTimestamp()
         });
         
-        const nextDueDate = new Date(client.payment.dueDate);
-        nextDueDate.setMonth(nextDueDate.getMonth() + months);
+        const currentDueDate = new Date(client.payment.dueDate);
+        const today = new Date();
+        today.setHours(12, 0, 0, 0); // Hora neutra para cálculos de data
 
-        const update: any = { 'payment.dueDate': nextDueDate.toISOString(), 'payment.status': 'Pago' };
+        const targetDay = currentDueDate.getDate();
+
+        // Calculamos a base: o maior entre Hoje ou a data do Vencimento Atual.
+        // Isso garante que se o cliente estiver muito atrasado, o sistema pule para o próximo ciclo futuro 
+        // mantendo o dia fixo do mês.
+        let nextDate = new Date(Math.max(today.getTime(), currentDueDate.getTime()));
+        
+        // Avançamos o(s) mês(es) solicitado(s)
+        nextDate.setMonth(nextDate.getMonth() + months);
+        
+        // Tentamos restaurar o dia fixo
+        nextDate.setDate(targetDay);
+        
+        // Correção para meses curtos (ex: 31 Jan -> 28 Fev)
+        if (nextDate.getDate() !== targetDay) {
+            nextDate.setDate(0); 
+        }
+
+        const nextDueDateISO = nextDate.toISOString();
+
+        const update: any = { 'payment.dueDate': nextDueDateISO, 'payment.status': 'Pago' };
         if (client.advancePaymentUntil) update.advancePaymentUntil = firebase.firestore.FieldValue.delete();
         if (client.scheduledPlanChange) {
             update.plan = client.scheduledPlanChange.newPlan;
@@ -690,7 +717,6 @@ export const useAppData = (user: any | null, userData: UserData | null): AppData
 
     const acknowledgeTerms = (clientId: string) => db.collection('clients').doc(clientId).update({ lastAcceptedTermsAt: firebase.firestore.FieldValue.serverTimestamp() });
 
-    // FIX: Add pendingPriceChanges to the return object to satisfy AppData interface.
     return {
         clients, users, budgetQuotes, routes, products, stockProducts, orders, banks, transactions, settings, replenishmentQuotes, advancePaymentRequests, pendingPriceChanges, poolEvents, planChangeRequests, loading,
         setupCheck, createInitialAdmin, createTechnician,

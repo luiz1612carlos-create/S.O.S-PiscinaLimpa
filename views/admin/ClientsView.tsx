@@ -70,8 +70,6 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         if (!clientData) return;
         setIsSaving(true);
         try {
-            // Se as dimensões forem preenchidas (maior que 0), calcula o volume.
-            // Caso contrário, mantém o volume que já está no estado (poolVolume).
             let volume = clientData.poolVolume;
             const calculated = calculateVolume(
                 clientData.poolDimensions.width,
@@ -133,7 +131,7 @@ const ClientsView: React.FC<ClientsViewProps> = ({ appContext }) => {
         };
     
         const fee = calculateClientMonthlyFee(clientToPay, settings);
-        if (!window.confirm(`Confirma o pagamento da mensalidade de R$ ${fee.toFixed(2)} para ${clientToPay.name}?`)) return;
+        if (!window.confirm(`Confirma o pagamento da mensalidade de R$ ${fee.toFixed(2)} para ${clientToPay.name}? Isso também avançará a data de vencimento em 1 mês.`)) return;
     
         setIsSaving(true);
         try {
@@ -298,12 +296,9 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
             newErrors.dueDate = 'Data é obrigatória.';
         } else {
             const selectedDate = new Date(dueDateString + 'T00:00:00');
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            // Allow editing past dates in case of errors
             if (isNaN(selectedDate.getTime())) {
                 newErrors.dueDate = 'Data inválida.';
-            } else if (selectedDate < today) {
-                newErrors.dueDate = 'A data deve ser hoje ou no futuro.';
             }
         }
         setErrors(newErrors);
@@ -333,7 +328,6 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
             }
             current[keys[keys.length - 1]] = finalValue;
             
-            // Recalcular volume apenas se as dimensões forem alteradas e forem válidas (> 0)
             if (name.startsWith('poolDimensions')) {
                  const calc = calculateVolume(
                     newState.poolDimensions.width,
@@ -399,12 +393,6 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
         ];
     }, [settings]);
 
-    const isAdvancePlanActive = useMemo(() => {
-        if (!clientData.advancePaymentUntil) return false;
-        const advanceUntilDate = toDate(clientData.advancePaymentUntil);
-        return advanceUntilDate && advanceUntilDate > new Date();
-    }, [clientData.advancePaymentUntil]);
-    
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Editar Cliente: ${client.name}`} size="xl">
             <div className="space-y-4">
@@ -472,8 +460,9 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                 
                 <fieldset className="border p-4 rounded-md dark:border-gray-600">
                     <legend className="px-2 font-semibold">Pagamento</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <Select label="Banco" name="bankId" value={clientData.bankId || ''} onChange={handleChange} options={[{ value: '', label: 'Nenhum' }, ...banks.map(b => ({ value: b.id, label: b.name }))]} />
+                        <Select label="Status de Pagamento" name="payment.status" value={clientData.payment.status} onChange={handleChange} options={[{value: 'Pago', label: 'Pago'}, {value: 'Pendente', label: 'Pendente'}, {value: 'Atrasado', label: 'Atrasado'}]} />
                         <Input label="Próximo Vencimento" name="payment.dueDate" type="date" value={clientData.payment.dueDate.split('T')[0]} onChange={handleChange} error={errors.dueDate} />
                     </div>
                     <div className="flex justify-between items-center mt-4 p-3 bg-gray-100 dark:bg-gray-700/50 rounded-md">
@@ -481,8 +470,17 @@ const ClientEditModal: React.FC<ClientEditModalProps> = (props) => {
                             <p className="text-sm font-semibold">Valor Mensal Estimado:</p>
                             <p className="text-2xl font-bold text-primary-600">R$ {calculatedFee.toFixed(2)}</p>
                         </div>
-                        <Button onClick={() => onMarkPaid(clientData)} isLoading={isSaving} disabled={clientData.payment.status === 'Pago'}>Registrar Pagamento</Button>
+                        <Button 
+                            onClick={() => onMarkPaid(clientData)} 
+                            isLoading={isSaving} 
+                            variant={clientData.payment.status === 'Pago' ? 'secondary' : 'primary'}
+                        >
+                            Registrar Pagamento de Ciclo
+                        </Button>
                     </div>
+                    {clientData.payment.status === 'Pago' && (
+                        <p className="text-xs text-center text-gray-500 mt-2">Dica: Para reverter o status, use o campo "Status de Pagamento" acima e salve as alterações.</p>
+                    )}
                 </fieldset>
                 
                 <ClientStockManager stock={clientData.stock} allStockProducts={stockProducts} onStockChange={(newStock) => setClientData(prev => ({...prev, stock: newStock}))} />

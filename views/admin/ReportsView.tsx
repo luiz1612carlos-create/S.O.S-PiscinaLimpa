@@ -17,7 +17,10 @@ interface ReportsViewProps {
 
 // Helper function to safely convert Firestore timestamps or strings to Date objects
 const toDate = (timestamp: any): Date | null => {
-    if (!timestamp) return null;
+    // Se o timestamp for null, mas estivermos no contexto de uma transação recente,
+    // retornamos a data atual para que o KPI atualize imediatamente na UI (otimista)
+    if (!timestamp) return new Date();
+    
     if (typeof timestamp.toDate === 'function') {
         return timestamp.toDate();
     }
@@ -30,7 +33,8 @@ const toDate = (timestamp: any): Date | null => {
     if (timestamp.seconds) {
         return new Date(timestamp.seconds * 1000);
     }
-    return null;
+    // Fallback for pending server timestamps
+    return new Date();
 };
 
 
@@ -45,6 +49,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
     const stats = useMemo(() => {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        startOfMonth.setHours(0, 0, 0, 0);
 
         const activeClients = clients.filter(c => c.clientStatus === 'Ativo');
         
@@ -74,6 +79,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
     const revenueByBank = useMemo(() => {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        startOfMonth.setHours(0, 0, 0, 0);
 
         return transactions
             .filter(t => {
@@ -104,7 +110,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
     const handleOpenWhatsAppModal = (client: Client) => {
         if (!settings) return;
         
-        // Resolve PIX Key and Recipient: Client Specific > Client's Bank > Global Company Key
         let pixKey = client.pixKey;
         let pixRecipient = client.pixKeyRecipient;
 
@@ -112,8 +117,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
             const clientBank = banks.find(b => b.id === client.bankId);
             if (clientBank && clientBank.pixKey) {
                 pixKey = clientBank.pixKey;
-                // If bank has a specific recipient, use it. If not, don't fallback to client recipient if key changed.
-                // We'll fallback to global if bank doesn't have one later.
                 if (clientBank.pixKeyRecipient) {
                     pixRecipient = clientBank.pixKeyRecipient;
                 }
@@ -121,13 +124,11 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
         }
         if (!pixKey) {
             pixKey = settings.pixKey;
-            // Fallback to global recipient if no specific recipient was found
             if (!pixRecipient) {
                 pixRecipient = settings.pixKeyRecipient;
             }
         }
         
-        // Final fallback for recipient if key was found but recipient wasn't explicitly set in that specific object
         if (!pixRecipient) {
              pixRecipient = settings.pixKeyRecipient || settings.companyName;
         }
@@ -135,18 +136,14 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
         const dueDate = new Date(client.payment.dueDate).toLocaleDateString('pt-BR');
         const fee = calculateClientMonthlyFee(client, settings).toFixed(2).replace('.', ',');
         
-        // Intelligent Template Logic
-        // If the user's saved template doesn't have {DESTINATARIO}, we auto-append it for better UX.
         let template = settings.whatsappMessageTemplate;
         
         if (!template) {
              template = "Olá {CLIENTE}, tudo bem? Passando para lembrar sobre o vencimento da sua mensalidade no valor de R$ {VALOR} no dia {VENCIMENTO}. \n\nChave PIX: {PIX} \nDestinatário: {DESTINATARIO}\n\nAgradecemos a parceria!";
         } else if (!template.includes('{DESTINATARIO}')) {
-             // If {PIX} is present, put recipient right after it
              if (template.includes('{PIX}')) {
                  template = template.replace('{PIX}', '{PIX} \nDestinatário: {DESTINATARIO}');
              } else {
-                 // Otherwise append to end
                  template += '\nDestinatário: {DESTINATARIO}';
              }
         }
@@ -240,9 +237,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ appContext }) => {
                     </CardContent>
                 </Card>
                 <Card className="lg:col-span-3">
-                    <CardHeader><h3 className="font-semibold">Crescimento (Últimos 6 Meses)</h3></CardHeader>
+                    <CardHeader><h3 className="font-semibold">Performance Financeira (Últimos 6 Meses)</h3></CardHeader>
                     <CardContent>
-                        <MonthlyGrowthChart clients={clients} settings={settings} />
+                        <MonthlyGrowthChart clients={clients} transactions={transactions} settings={settings} />
                     </CardContent>
                 </Card>
             </div>
@@ -431,41 +428,48 @@ const ClientPlanChart = ({ clients }: { clients: Client[] }) => {
     return <canvas ref={chartRef}></canvas>;
 };
 
-const MonthlyGrowthChart = ({ clients, settings }: { clients: Client[], settings: any }) => {
+const MonthlyGrowthChart = ({ clients, transactions, settings }: { clients: Client[], transactions: Transaction[], settings: any }) => {
     const chartRef = useRef<HTMLCanvasElement>(null);
     const chartInstance = useRef<any>(null);
 
     const data = useMemo(() => {
-        if (!settings) return { labels: [], monthlyRevenue: [], newClients: [] };
+        if (!settings) return { labels: [], realRevenue: [], potentialRevenue: [], clientCount: [] };
 
         const labels: string[] = [];
-        const monthlyRevenue: number[] = [];
-        const newClients: number[] = [];
+        const realRevenue: number[] = [];
+        const potentialRevenue: number[] = [];
+        const clientCount: number[] = [];
         
         for (let i = 5; i >= 0; i--) {
             const d = new Date();
             d.setMonth(d.getMonth() - i);
-            labels.push(d.toLocaleString('default', { month: 'short' }));
+            labels.push(d.toLocaleString('pt-BR', { month: 'short' }));
             
+            const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0);
             const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-            const clientsThisMonth = clients.filter(c => {
+            // Real Revenue: Sum of transactions in that month
+            const realSum = transactions
+                .filter(t => {
+                    const tDate = toDate(t.date);
+                    return tDate && tDate >= startOfMonth && tDate <= endOfMonth;
+                })
+                .reduce((sum, t) => sum + t.amount, 0);
+            realRevenue.push(realSum);
+
+            // Potential Revenue & Client Count at that point in time
+            const clientsAtThatTime = clients.filter(c => {
                 const createdAtDate = toDate(c.createdAt);
                 return createdAtDate && createdAtDate <= endOfMonth && c.clientStatus === 'Ativo';
-            }).length;
-            newClients.push(clientsThisMonth);
+            });
+            clientCount.push(clientsAtThatTime.length);
 
-            const revenueThisMonth = clients
-                .filter(c => {
-                    const createdAtDate = toDate(c.createdAt);
-                    return createdAtDate && createdAtDate <= endOfMonth && c.clientStatus === 'Ativo';
-                })
-                .reduce((sum, c) => sum + calculateClientMonthlyFee(c, settings), 0);
-            monthlyRevenue.push(revenueThisMonth);
+            const potentialSum = clientsAtThatTime.reduce((sum, c) => sum + calculateClientMonthlyFee(c, settings), 0);
+            potentialRevenue.push(potentialSum);
         }
         
-        return { labels, monthlyRevenue, newClients };
-    }, [clients, settings]);
+        return { labels, realRevenue, potentialRevenue, clientCount };
+    }, [clients, transactions, settings]);
 
     useEffect(() => {
         if (!chartRef.current) return;
@@ -479,18 +483,28 @@ const MonthlyGrowthChart = ({ clients, settings }: { clients: Client[], settings
                 labels: data.labels,
                 datasets: [
                     {
-                        label: 'Faturamento Mensal',
-                        data: data.monthlyRevenue,
-                        backgroundColor: '#3b82f6',
+                        label: 'Faturamento Real (Pagos)',
+                        data: data.realRevenue,
+                        backgroundColor: '#10b981', // green-500
                         yAxisID: 'y',
+                        order: 2
+                    },
+                    {
+                        label: 'Faturamento Potencial (Contratos)',
+                        data: data.potentialRevenue,
+                        backgroundColor: '#3b82f6', // blue-500
+                        yAxisID: 'y',
+                        order: 3,
+                        alpha: 0.5
                     },
                     {
                         label: 'Total de Clientes',
-                        data: data.newClients,
-                        borderColor: '#f59e0b',
+                        data: data.clientCount,
+                        borderColor: '#f59e0b', // amber-500
                         backgroundColor: '#f59e0b',
                         type: 'line',
                         yAxisID: 'y1',
+                        order: 1
                     }
                 ]
             },
